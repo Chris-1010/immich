@@ -11,6 +11,7 @@ import 'package:immich_mobile/infrastructure/repositories/network.repository.dar
 import 'package:logging/logging.dart';
 import 'package:http/http.dart';
 import 'package:immich_mobile/utils/debug_print.dart';
+import 'package:uuid/uuid.dart';
 
 final uploadRepositoryProvider = Provider((ref) => UploadRepository());
 
@@ -147,6 +148,64 @@ class UploadRepository {
       logger.warning("Error uploading $logContext: ${error.toString()}: $stackTrace");
       return UploadResult.error(errorMessage: error.toString());
     }
+  }
+
+  /// Uploads an edited image straight to the server as a new asset, without it
+  /// ever being saved to the device gallery.
+  ///
+  /// [fileCreatedAt] should be the original asset's date-taken so the new asset
+  /// sorts next to the original in the timeline. A synthetic [deviceAssetId] is
+  /// used because there is no corresponding local asset.
+  Future<UploadResult> uploadEditedImage({
+    required File file,
+    required String originalFileName,
+    required DateTime fileCreatedAt,
+    required DateTime fileModifiedAt,
+    Completer<void>? cancelToken,
+    void Function(int bytes, int totalBytes)? onProgress,
+    int maxAttempts = 3,
+  }) async {
+    final fields = {
+      'deviceAssetId': 'edited_${const Uuid().v4()}',
+      'deviceId': Store.get(StoreKey.deviceId),
+      'fileCreatedAt': fileCreatedAt.toUtc().toIso8601String(),
+      'fileModifiedAt': fileModifiedAt.toUtc().toIso8601String(),
+      'isFavorite': 'false',
+      'duration': '0',
+    };
+
+    UploadResult result = UploadResult.error(errorMessage: 'Upload not attempted');
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      result = await uploadFile(
+        file: file,
+        originalFileName: originalFileName,
+        fields: fields,
+        cancelToken: cancelToken,
+        onProgress: onProgress,
+        logContext: 'editedImage (attempt $attempt/$maxAttempts)',
+      );
+
+      if (!_shouldRetryUpload(result) || attempt == maxAttempts) {
+        return result;
+      }
+
+      logger.warning('Edited image upload attempt $attempt failed, retrying: ${result.errorMessage}');
+      await Future.delayed(Duration(seconds: attempt));
+    }
+    return result;
+  }
+
+  /// Retries only transient failures (e.g. a dropped connection / broken pipe).
+  /// A cancellation, a 413 (too large) or any other 4xx client error is not
+  /// retried because retrying will not change the outcome.
+  bool _shouldRetryUpload(UploadResult result) {
+    if (result.isSuccess || result.isCancelled) {
+      return false;
+    }
+    final status = result.statusCode;
+    // No status code => network/transport error (broken pipe, timeout): retry.
+    // 5xx => server-side transient error: retry. 4xx => do not retry.
+    return status == null || status >= 500;
   }
 }
 

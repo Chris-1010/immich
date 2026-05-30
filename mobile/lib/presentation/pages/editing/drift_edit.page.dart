@@ -1,29 +1,30 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
-import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
-import 'package:immich_mobile/repositories/file_media.repository.dart';
+import 'package:immich_mobile/repositories/asset_api.repository.dart';
+import 'package:immich_mobile/repositories/upload.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
-import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/utils/image_converter.dart';
+import 'package:immich_mobile/widgets/common/immich_loading_indicator.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 import 'package:logging/logging.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-/// A stateless widget that provides functionality for editing an image.
+/// A widget that provides functionality for editing an image.
 ///
-/// This widget allows users to edit an image provided either as an [Asset] or
-/// directly as an [Image]. It ensures that exactly one of these is provided.
-///
-/// It also includes a conversion method to convert an [Image] to a [Uint8List] to save the image on the user's phone
-/// They automatically navigate to the [HomePage] with the edited image saved and they eventually get backed up to the server.
+/// The edited [image] is rendered on-device and uploaded directly to the Immich
+/// server as a new asset (keeping the original's date-taken). It is never saved
+/// to the device gallery. "Save in place" additionally moves the original server
+/// asset to the trash.
 @immutable
 @RoutePage()
 class DriftEditImagePage extends ConsumerWidget {
@@ -33,42 +34,165 @@ class DriftEditImagePage extends ConsumerWidget {
 
   const DriftEditImagePage({super.key, required this.asset, required this.image, required this.isEdited});
 
-  void _exitEditing(BuildContext context) {
+  void _exitEditing(BuildContext context, {bool popViewer = false}) {
     // this assumes that the only way to get to this page is from the AssetViewerRoute
     context.navigator.popUntil((route) => route.data?.name == AssetViewerRoute.name);
+
+    // When the original asset was trashed (in-place save), the asset viewer is
+    // now showing a deleted asset, so pop it too and return to the timeline.
+    if (popViewer) {
+      context.navigator.maybePop();
+    }
   }
 
-  Future<void> _saveEditedImage(BuildContext context, BaseAsset asset, Image image, WidgetRef ref) async {
-    try {
-      final Uint8List imageData = await imageToUint8List(image);
-      LocalAsset? localAsset;
+  /// Renders the edited [image] and uploads it straight to the server as a new
+  /// asset, carrying over the original asset's date-taken. The image is never
+  /// written to the device gallery — it is staged in a temporary file that is
+  /// deleted after the upload.
+  ///
+  /// Returns the new asset's remote id on success. Throws on a render/upload
+  /// failure so callers can surface an error.
+  Future<String> _renderAndUploadToServer(BaseAsset asset, Image image, WidgetRef ref) async {
+    final Uint8List imageData = await imageToUint8List(image);
+    final fileName = "${p.withoutExtension(asset.name)}_edited.jpg";
 
-      try {
-        localAsset = await ref
-            .read(fileMediaRepositoryProvider)
-            .saveLocalAsset(imageData, title: "${p.withoutExtension(asset.name)}_edited.jpg");
-      } on PlatformException catch (e) {
-        // OS might not return the saved image back, so we handle that gracefully
-        // This can happen if app does not have full library access
-        Logger("SaveEditedImage").warning("Failed to retrieve the saved image back from OS", e);
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File(p.join(tempDir.path, fileName));
+
+    try {
+      await tempFile.writeAsBytes(imageData);
+
+      final result = await ref
+          .read(uploadRepositoryProvider)
+          .uploadEditedImage(
+            file: tempFile,
+            originalFileName: fileName,
+            fileCreatedAt: asset.createdAt,
+            fileModifiedAt: asset.updatedAt,
+          );
+
+      if (!result.isSuccess || result.remoteAssetId == null) {
+        throw Exception(result.errorMessage ?? 'Upload failed');
       }
 
-      unawaited(ref.read(backgroundSyncProvider).syncLocal(full: true));
-      _exitEditing(context);
-      ImmichToast.show(durationInSecond: 3, context: context, msg: 'Image Saved!');
+      return result.remoteAssetId!;
+    } finally {
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (e) {
+        Logger("SaveEditedImage").warning("Failed to delete temporary edited image", e);
+      }
+    }
+  }
 
-      if (localAsset == null) {
+  /// Uploads the edit to the server as a new asset, leaving the original alone.
+  Future<void> _saveAsCopy(BuildContext context, BaseAsset asset, Image image, WidgetRef ref) async {
+    try {
+      await _runWithSpinner(context, () async {
+        await _renderAndUploadToServer(asset, image, ref);
+        // Pull the new asset into the local timeline so it shows without a manual sync.
+        await ref.read(backgroundSyncProvider).syncRemote();
+      });
+      if (!context.mounted) {
         return;
       }
-
-      await ref.read(foregroundUploadServiceProvider).uploadManual([localAsset]);
+      _exitEditing(context);
+      ImmichToast.show(durationInSecond: 3, context: context, msg: 'Image Saved!');
     } catch (e) {
-      ImmichToast.show(
-        durationInSecond: 6,
-        context: context,
-        msg: "error_saving_image".tr(namedArgs: {'error': e.toString()}),
-      );
+      _showSaveError(context, e);
     }
+  }
+
+  /// Uploads the edit to the server as a new asset, then moves the original
+  /// server asset to the Trash (recoverable). The original is only trashed after
+  /// the edited copy has uploaded successfully, so a failure never loses data.
+  /// If the edited asset has no server original (e.g. a purely local asset),
+  /// this behaves like "save as copy".
+  Future<void> _saveInPlace(BuildContext context, BaseAsset asset, Image image, WidgetRef ref) async {
+    final confirmed = await _confirmReplaceOriginal(context);
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    final originalRemoteId = asset.remoteId;
+    final trashedOriginal = originalRemoteId != null;
+
+    try {
+      await _runWithSpinner(context, () async {
+        await _renderAndUploadToServer(asset, image, ref);
+
+        // Soft-trash the original server asset only after a successful upload.
+        if (trashedOriginal) {
+          await ref.read(assetApiRepositoryProvider).delete([originalRemoteId], false);
+        }
+
+        // Pull the new asset in and the trashed original out of the local timeline.
+        await ref.read(backgroundSyncProvider).syncRemote();
+      });
+
+      if (!context.mounted) {
+        return;
+      }
+      // If we trashed the original, also leave its (now stale) asset viewer.
+      _exitEditing(context, popViewer: trashedOriginal);
+      ImmichToast.show(durationInSecond: 3, context: context, msg: 'Image Saved!');
+    } catch (e) {
+      _showSaveError(context, e);
+    }
+  }
+
+  /// Runs [action] while showing a blocking spinner overlay, ensuring the
+  /// overlay is always dismissed (even on error) before returning.
+  Future<void> _runWithSpinner(BuildContext context, Future<void> Function() action) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black54,
+        useRootNavigator: true,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(child: ImmichLoadingIndicator()),
+        ),
+      ),
+    );
+
+    try {
+      await action();
+    } finally {
+      // Dismiss the spinner dialog.
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    }
+  }
+
+  Future<bool?> _confirmReplaceOriginal(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("replace_original".tr()),
+        content: Text("replace_original_confirm".tr()),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text("cancel".tr())),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text("confirm".tr())),
+        ],
+      ),
+    );
+  }
+
+  void _showSaveError(BuildContext context, Object e) {
+    if (!context.mounted) {
+      return;
+    }
+    ImmichToast.show(
+      durationInSecond: 6,
+      context: context,
+      msg: "error_saving_image".tr(namedArgs: {'error': e.toString()}),
+    );
   }
 
   @override
@@ -82,9 +206,25 @@ class DriftEditImagePage extends ConsumerWidget {
           onPressed: () => _exitEditing(context),
         ),
         actions: <Widget>[
-          TextButton(
-            onPressed: isEdited ? () => _saveEditedImage(context, asset, image, ref) : null,
-            child: Text("save_to_gallery".tr(), style: TextStyle(color: isEdited ? context.primaryColor : Colors.grey)),
+          PopupMenuButton<_SaveAction>(
+            enabled: isEdited,
+            position: PopupMenuPosition.under,
+            onSelected: (action) {
+              switch (action) {
+                case _SaveAction.copy:
+                  _saveAsCopy(context, asset, image, ref);
+                case _SaveAction.inPlace:
+                  _saveInPlace(context, asset, image, ref);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(value: _SaveAction.copy, child: Text("save_as_copy".tr())),
+              PopupMenuItem(value: _SaveAction.inPlace, child: Text("replace_original".tr())),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Text("save".tr(), style: TextStyle(color: isEdited ? context.primaryColor : Colors.grey)),
+            ),
           ),
         ],
       ),
@@ -151,3 +291,5 @@ class DriftEditImagePage extends ConsumerWidget {
     );
   }
 }
+
+enum _SaveAction { copy, inPlace }
