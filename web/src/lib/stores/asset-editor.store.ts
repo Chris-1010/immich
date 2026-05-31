@@ -19,6 +19,59 @@ export const changedOriention = derived(normaizedRorateDegrees, () => get(normai
 export const showCancelConfirmDialog = writable<boolean | CallableFunction>(false);
 export const lastChosenLocation = writable<{ lng: number; lat: number } | null>(null);
 
+export type SavedLocation = {
+  name: string;
+  latitude: number;
+  longitude: number;
+};
+
+const SAVED_LOCATIONS_KEY = 'immich_saved_locations';
+
+function loadSavedLocations(): SavedLocation[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(SAVED_LOCATIONS_KEY);
+    return stored ? (JSON.parse(stored) as SavedLocation[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function createSavedLocationsStore() {
+  const { subscribe, update } = writable<SavedLocation[]>(loadSavedLocations());
+
+  function persist(locations: SavedLocation[]) {
+    try {
+      localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(locations));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  function add(location: SavedLocation) {
+    update((locations) => {
+      const filtered = locations.filter(
+        (l) => l.latitude !== location.latitude || l.longitude !== location.longitude,
+      );
+      const next = [location, ...filtered];
+      persist(next);
+      return next;
+    });
+  }
+
+  function remove(index: number) {
+    update((locations) => {
+      const next = locations.filter((_, i) => i !== index);
+      persist(next);
+      return next;
+    });
+  }
+
+  return { subscribe, add, remove };
+}
+
+export const savedLocations = createSavedLocationsStore();
+
 export const editTypes = [
   {
     name: 'crop',

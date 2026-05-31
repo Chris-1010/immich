@@ -4727,7 +4727,7 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, userId, visibility, withCoordinates, withPartners, withStacked }: {
+export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4740,6 +4740,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
+    withoutCoordinates?: boolean;
     withPartners?: boolean;
     withStacked?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
@@ -4759,6 +4760,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
         userId,
         visibility,
         withCoordinates,
+        withoutCoordinates,
         withPartners,
         withStacked
     }))}`, {
@@ -4768,7 +4770,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, userId, visibility, withCoordinates, withPartners, withStacked }: {
+export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4780,6 +4782,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
+    withoutCoordinates?: boolean;
     withPartners?: boolean;
     withStacked?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
@@ -4798,6 +4801,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
         userId,
         visibility,
         withCoordinates,
+        withoutCoordinates,
         withPartners,
         withStacked
     }))}`, {

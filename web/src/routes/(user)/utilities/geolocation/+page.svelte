@@ -15,7 +15,7 @@
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { AssetVisibility, getAssetInfo, updateAssets } from '@immich/sdk';
   import { Button, LoadingSpinner, modalManager, Text } from '@immich/ui';
-  import { mdiMapMarkerMultipleOutline, mdiPencilOutline, mdiSelectRemove } from '@mdi/js';
+  import { mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiPencilOutline, mdiSelectRemove } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -29,14 +29,16 @@
   let assetInteraction = new AssetInteraction();
   let location = $state<{ latitude: number; longitude: number }>({ latitude: 0, longitude: 0 });
   let locationUpdated = $state(false);
+  let filterNoGps = $state(false);
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
-  const options = {
+  let options = $derived({
     visibility: AssetVisibility.Timeline,
     withStacked: true,
     withPartners: true,
     withCoordinates: true,
-  };
+    withoutCoordinates: filterNoGps || undefined,
+  });
 
   const handleUpdate = async () => {
     const confirmed = await modalManager.show(GeolocationUpdateConfirmModal, {
@@ -154,6 +156,15 @@
 
       <Button size="small" color="secondary" variant="ghost" leadingIcon={mdiPencilOutline} onclick={handlePickOnMap}>
         <Text class="hidden sm:inline-block">{$t('location_picker_choose_on_map')}</Text>
+      </Button>
+      <Button
+        size="small"
+        color={filterNoGps ? 'primary' : 'secondary'}
+        variant={filterNoGps ? 'filled' : 'ghost'}
+        leadingIcon={mdiMapMarkerOffOutline}
+        onclick={() => (filterNoGps = !filterNoGps)}
+      >
+        <Text class="hidden sm:inline-block">{$t('gps_missing')}</Text>
       </Button>
       <Button
         leadingIcon={mdiSelectRemove}
