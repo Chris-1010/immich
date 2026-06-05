@@ -9,6 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
 import 'package:immich_mobile/repositories/upload.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
@@ -56,6 +57,10 @@ class DriftEditImagePage extends ConsumerWidget {
     final Uint8List imageData = await imageToUint8List(image);
     final fileName = "${p.withoutExtension(asset.name)}_edited.jpg";
 
+    // Read the original's metadata up front so it can be copied onto the new
+    // asset (re-encoding the edit strips the original EXIF).
+    final originalExif = await ref.read(assetServiceProvider).getExif(asset);
+
     final tempDir = await getTemporaryDirectory();
     final tempFile = File(p.join(tempDir.path, fileName));
 
@@ -75,7 +80,15 @@ class DriftEditImagePage extends ConsumerWidget {
         throw Exception(result.errorMessage ?? 'Upload failed');
       }
 
-      return result.remoteAssetId!;
+      final newAssetId = result.remoteAssetId!;
+
+      // Carry over the original's location, description, rating, favorite and
+      // date-taken to the new asset.
+      await ref
+          .read(assetApiRepositoryProvider)
+          .copyMetadata(newAssetId, exif: originalExif, isFavorite: asset.isFavorite);
+
+      return newAssetId;
     } finally {
       try {
         if (await tempFile.exists()) {

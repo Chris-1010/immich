@@ -1,6 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart';
 import 'package:immich_mobile/constants/enums.dart';
+import 'package:immich_mobile/domain/models/exif.model.dart';
 import 'package:immich_mobile/domain/models/stack.model.dart';
 import 'package:immich_mobile/entities/asset.entity.dart';
 import 'package:immich_mobile/providers/api.provider.dart';
@@ -28,6 +29,23 @@ class AssetApiRepository extends ApiRepository {
   Future<Asset> update(String id, {String? description}) async {
     final response = await checkNull(_api.updateAsset(id, UpdateAssetDto(description: description)));
     return Asset.remote(response);
+  }
+
+  /// Copies the transferable metadata from an original asset's [exif] (plus
+  /// [isFavorite]) onto another asset [id]. Used when an edited copy is uploaded
+  /// as a new asset so it keeps the original's location, description, rating,
+  /// favorite status and date-taken. (City/state/country are re-derived by the
+  /// server from the coordinates.)
+  Future<void> copyMetadata(String id, {ExifInfo? exif, bool? isFavorite}) async {
+    final dto = UpdateAssetDto(
+      latitude: exif?.latitude,
+      longitude: exif?.longitude,
+      description: exif?.description,
+      rating: exif?.rating,
+      dateTimeOriginal: exif?.dateTimeOriginal?.toIso8601String(),
+      isFavorite: isFavorite,
+    );
+    await checkNull(_api.updateAsset(id, dto));
   }
 
   Future<List<Asset>> search({List<String> personIds = const []}) async {
