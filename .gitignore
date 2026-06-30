@@ -28,3 +28,8 @@ vite.config.js.timestamp-*
 .pnpm-store
 .devcontainer/library
 .devcontainer/.env*
+
+# Local design notes for the "No Location" feature (not for upstream)
+/CONTEXT.md
+/docs/adr/
+/docs/plans/

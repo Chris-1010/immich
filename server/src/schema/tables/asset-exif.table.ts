@@ -101,4 +101,7 @@ export class AssetExifTable {
 
   @Column({ type: 'character varying', array: true, nullable: true })
   lockedProperties!: Array<LockableProperty> | null;
+
+  @Column({ type: 'boolean', default: false })
+  noLocation!: Generated<boolean>;
 }

@@ -26,6 +26,7 @@ export class ExifResponseDto {
   description?: string | null = null;
   projectionType?: string | null = null;
   rating?: number | null = null;
+  noLocation?: boolean | null = null;
 }
 
 export function mapExif(entity: Exif): ExifResponseDto {
@@ -52,6 +53,7 @@ export function mapExif(entity: Exif): ExifResponseDto {
     description: entity.description,
     projectionType: entity.projectionType,
     rating: entity.rating,
+    noLocation: entity.noLocation,
   };
 }
 

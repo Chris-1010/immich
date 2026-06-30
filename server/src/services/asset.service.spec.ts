@@ -388,6 +388,58 @@ describe(AssetService.name, () => {
       expect(mocks.asset.update).not.toHaveBeenCalled();
       expect(mocks.event.emit).not.toHaveBeenCalled();
     });
+
+    it('should mark an asset No Location, clearing and locking its coordinates', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+      mocks.asset.getById.mockResolvedValue(assetStub.image);
+      mocks.asset.update.mockResolvedValue(assetStub.image);
+
+      await sut.update(authStub.admin, 'asset-1', { noLocation: true });
+
+      expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
+        {
+          assetId: 'asset-1',
+          latitude: null,
+          longitude: null,
+          city: null,
+          state: null,
+          country: null,
+          noLocation: true,
+          lockedProperties: ['latitude', 'longitude'],
+        },
+        { lockedPropertiesBehavior: 'append' },
+      );
+    });
+
+    it('should clear the No Location marker when real coordinates are assigned', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+      mocks.asset.getById.mockResolvedValue(assetStub.image);
+      mocks.asset.update.mockResolvedValue(assetStub.image);
+
+      await sut.update(authStub.admin, 'asset-1', { latitude: 30, longitude: 50 });
+
+      expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
+        {
+          assetId: 'asset-1',
+          latitude: 30,
+          longitude: 50,
+          noLocation: false,
+          lockedProperties: ['latitude', 'longitude'],
+        },
+        { lockedPropertiesBehavior: 'append' },
+      );
+    });
+
+    it('should unassign an asset, clearing the marker and unlocking coordinates', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+      mocks.asset.getById.mockResolvedValue(assetStub.image);
+      mocks.asset.update.mockResolvedValue(assetStub.image);
+
+      await sut.update(authStub.admin, 'asset-1', { noLocation: false });
+
+      expect(mocks.asset.clearNoLocation).toHaveBeenCalledWith(['asset-1']);
+      expect(mocks.asset.upsertExif).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateAll', () => {
@@ -436,7 +488,11 @@ describe(AssetService.name, () => {
         rating: undefined,
       });
       expect(mocks.asset.updateAll).toHaveBeenCalled();
-      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1'], { latitude: 0, longitude: 0 });
+      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1'], {
+        latitude: 0,
+        longitude: 0,
+        noLocation: false,
+      });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });
 
@@ -457,6 +513,7 @@ describe(AssetService.name, () => {
         dateTimeOriginal,
         latitude: 30,
         longitude: 50,
+        noLocation: false,
       });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: 'asset-1' } }]);
     });
@@ -473,6 +530,37 @@ describe(AssetService.name, () => {
         rating: undefined,
       });
       expect(mocks.asset.updateAll).toHaveBeenCalled();
+    });
+
+    it('should mark assets No Location, clearing their location data', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1', 'asset-2']));
+
+      await sut.updateAll(authStub.admin, { ids: ['asset-1', 'asset-2'], noLocation: true });
+
+      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1', 'asset-2'], {
+        latitude: null,
+        longitude: null,
+        city: null,
+        state: null,
+        country: null,
+        noLocation: true,
+      });
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.SidecarWrite, data: { id: 'asset-1' } },
+        { name: JobName.SidecarWrite, data: { id: 'asset-2' } },
+      ]);
+    });
+
+    it('should clear the No Location marker when assigning coordinates in bulk', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+
+      await sut.updateAll(authStub.admin, { ids: ['asset-1'], latitude: 30, longitude: 50 });
+
+      expect(mocks.asset.updateAllExif).toHaveBeenCalledWith(['asset-1'], {
+        latitude: 30,
+        longitude: 50,
+        noLocation: false,
+      });
     });
 
     it('should update exif table if dateTimeRelative and timeZone field is provided', async () => {

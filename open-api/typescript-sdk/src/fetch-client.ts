@@ -293,6 +293,7 @@ export type ExifResponseDto = {
     make?: string | null;
     model?: string | null;
     modifyDate?: string | null;
+    noLocation?: boolean | null;
     orientation?: string | null;
     projectionType?: string | null;
     rating?: number | null;
@@ -501,6 +502,7 @@ export type AssetBulkUpdateDto = {
     isFavorite?: boolean;
     latitude?: number;
     longitude?: number;
+    noLocation?: boolean;
     rating?: number;
     timeZone?: string;
     visibility?: AssetVisibility;
@@ -550,6 +552,7 @@ export type UpdateAssetDto = {
     latitude?: number;
     livePhotoVideoId?: string | null;
     longitude?: number;
+    noLocation?: boolean;
     rating?: number;
     visibility?: AssetVisibility;
 };
@@ -1685,6 +1688,8 @@ export type TimeBucketAssetResponseDto = {
     localOffsetHours: number[];
     /** Array of longitude coordinates extracted from EXIF GPS data */
     longitude?: (number | null)[];
+    /** Array indicating whether each asset is deliberately marked as having no location */
+    noLocation?: boolean[];
     /** Array of owner IDs for each asset */
     ownerId: string[];
     /** Array of projection types for 360° content (e.g., "EQUIRECTANGULAR", "CUBEFACE", "CYLINDRICAL") */
@@ -4727,7 +4732,7 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
+export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4737,6 +4742,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
     slug?: string;
     tagId?: string;
     timeBucket: string;
+    timeBucketField?: TimeBucketField;
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
@@ -4757,6 +4763,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
         slug,
         tagId,
         timeBucket,
+        timeBucketField,
         userId,
         visibility,
         withCoordinates,
@@ -4770,7 +4777,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
+export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4779,6 +4786,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
     personId?: string;
     slug?: string;
     tagId?: string;
+    timeBucketField?: TimeBucketField;
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
@@ -4798,6 +4806,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
         personId,
         slug,
         tagId,
+        timeBucketField,
         userId,
         visibility,
         withCoordinates,
@@ -5168,6 +5177,10 @@ export enum UserStatus {
 export enum AssetOrder {
     Asc = "asc",
     Desc = "desc"
+}
+export enum TimeBucketField {
+    DateTaken = "dateTaken",
+    DateAdded = "dateAdded"
 }
 export enum AssetVisibility {
     Archive = "archive",

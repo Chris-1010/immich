@@ -446,6 +446,7 @@ export const columns = {
     'asset_exif.make',
     'asset_exif.model',
     'asset_exif.modifyDate',
+    'asset_exif.noLocation',
     'asset_exif.orientation',
     'asset_exif.profileDescription',
     'asset_exif.projectionType',

@@ -95,7 +95,7 @@ export class AssetService extends BaseService {
   async update(auth: AuthDto, id: string, dto: UpdateAssetDto): Promise<AssetResponseDto> {
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: [id] });
 
-    const { description, dateTimeOriginal, latitude, longitude, rating, ...rest } = dto;
+    const { description, dateTimeOriginal, latitude, longitude, rating, noLocation, ...rest } = dto;
     const repos = { asset: this.assetRepository, event: this.eventRepository };
 
     let previousMotion: MapAsset | null = null;
@@ -108,7 +108,7 @@ export class AssetService extends BaseService {
       }
     }
 
-    await this.updateExif({ id, description, dateTimeOriginal, latitude, longitude, rating });
+    await this.updateExif({ id, description, dateTimeOriginal, latitude, longitude, rating, noLocation });
 
     const asset = await this.assetRepository.update({ id, ...rest });
 
@@ -140,6 +140,7 @@ export class AssetService extends BaseService {
       duplicateId,
       dateTimeRelative,
       timeZone,
+      noLocation,
     } = dto;
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids });
 
@@ -151,12 +152,25 @@ export class AssetService extends BaseService {
         rating,
         description,
         dateTimeOriginal,
+        // Assigning real coordinates always clears the No Location marker.
+        noLocation: latitude !== undefined || longitude !== undefined ? false : undefined,
       },
       _.isUndefined,
     );
     const extractedTimeZone = dateTimeOriginal ? DateTime.fromISO(dateTimeOriginal, { setZone: true }).zone : undefined;
 
-    if (Object.keys(exifDto).length > 0) {
+    if (noLocation === true) {
+      // Mark No Location: clear all location data and set the marker. updateAllExif locks the
+      // listed lockable columns (latitude/longitude), preventing a re-scan from resurrecting GPS.
+      await this.assetRepository.updateAllExif(ids, {
+        latitude: null,
+        longitude: null,
+        city: null,
+        state: null,
+        country: null,
+        noLocation: true,
+      });
+    } else if (Object.keys(exifDto).length > 0) {
       await this.assetRepository.updateAllExif(ids, exifDto);
     }
 
@@ -448,8 +462,36 @@ export class AssetService extends BaseService {
     latitude?: number;
     longitude?: number;
     rating?: number;
+    noLocation?: boolean;
   }) {
-    const { id, description, dateTimeOriginal, latitude, longitude, rating } = dto;
+    const { id, description, dateTimeOriginal, latitude, longitude, rating, noLocation } = dto;
+
+    // Mark No Location: clear all location data, set the marker, and lock the coordinates so a
+    // future metadata re-scan cannot resurrect GPS from the original file and flip the asset back.
+    if (noLocation === true) {
+      await this.assetRepository.upsertExif(
+        updateLockedColumns({
+          assetId: id,
+          latitude: null,
+          longitude: null,
+          city: null,
+          state: null,
+          country: null,
+          noLocation: true,
+        }),
+        { lockedPropertiesBehavior: 'append' },
+      );
+      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
+      return;
+    }
+
+    // Unassign: clear the marker and unlock the coordinates so a re-scan can legitimately re-derive them.
+    if (noLocation === false && latitude === undefined && longitude === undefined) {
+      await this.assetRepository.clearNoLocation([id]);
+      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
+      return;
+    }
+
     const extractedTimeZone = dateTimeOriginal ? DateTime.fromISO(dateTimeOriginal, { setZone: true }).zone : undefined;
     const writes = _.omitBy(
       {
@@ -459,6 +501,8 @@ export class AssetService extends BaseService {
         latitude,
         longitude,
         rating,
+        // Assigning real coordinates always clears the No Location marker.
+        noLocation: latitude !== undefined || longitude !== undefined ? false : undefined,
       },
       _.isUndefined,
     );

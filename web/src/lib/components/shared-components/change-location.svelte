@@ -1,3 +1,14 @@
+<script lang="ts" module>
+  export interface Point {
+    lng: number;
+    lat: number;
+  }
+
+  // The modal resolves to one of three outcomes: applying real coordinates, toggling the No Location
+  // marker (value: true to mark, false to unassign), or being dismissed (undefined).
+  export type ChangeLocationResult = { type: 'coordinates'; point: Point } | { type: 'noLocation'; value: boolean };
+</script>
+
 <script lang="ts">
   import { clickOutside } from '$lib/actions/click-outside';
   import { listNavigation } from '$lib/actions/list-navigation';
@@ -9,20 +20,15 @@
   import { delay } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { searchPlaces, type AssetResponseDto, type PlacesResponseDto } from '@immich/sdk';
-  import { ConfirmModal, IconButton, LoadingSpinner } from '@immich/ui';
-  import { mdiMapMarkerMultipleOutline, mdiTrashCanOutline } from '@mdi/js';
+  import { Button, HStack, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
+  import { mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiTrashCanOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-
-  interface Point {
-    lng: number;
-    lat: number;
-  }
 
   interface Props {
     asset?: AssetResponseDto | undefined;
     point?: Point;
-    onClose: (point?: Point) => void;
+    onClose: (result?: ChangeLocationResult) => void;
   }
 
   let { asset = undefined, point: initialPoint, onClose }: Props = $props();
@@ -64,13 +70,20 @@
   let saveNameInput = $state('');
   let savedFilter = $state('');
 
-  const handleConfirm = (confirmed?: boolean) => {
-    if (point && confirmed) {
-      lastChosenLocation.set(point);
-      onClose(point);
-    } else {
-      onClose();
+  // A single asset already marked No Location offers "Unassign Location"; otherwise (including bulk
+  // mode, where no single asset is passed) the action marks the selection No Location.
+  let isAssetNoLocation = $derived(asset?.exifInfo?.noLocation === true);
+
+  const handleApplyCoordinates = () => {
+    if (!point) {
+      return;
     }
+    lastChosenLocation.set(point);
+    onClose({ type: 'coordinates', point });
+  };
+
+  const handleNoLocation = () => {
+    onClose({ type: 'noLocation', value: !isAssetNoLocation });
   };
 
   const getLocation = (name: string, admin1Name?: string, admin2Name?: string): string => {
@@ -140,15 +153,9 @@
   };
 </script>
 
-<ConfirmModal
-  confirmColor="primary"
-  title={$t('change_location')}
-  icon={mdiMapMarkerMultipleOutline}
-  size="large"
-  onClose={handleConfirm}
->
-  {#snippet promptSnippet()}
-    <div class="flex w-full gap-4">
+<Modal title={$t('change_location')} icon={mdiMapMarkerMultipleOutline} size="large" onClose={() => onClose()}>
+  <ModalBody>
+    <div class="flex w-full flex-col gap-4 sm:flex-row">
       <!-- Left: picker -->
       <div class="flex min-w-0 flex-1 flex-col gap-2">
         <div class="relative w-full z-1">
@@ -193,7 +200,7 @@
         </div>
 
         <span>{$t('pick_a_location')}</span>
-        <div class="h-125 min-h-75 w-full z-0">
+        <div class="h-64 min-h-64 w-full z-0 sm:h-125 sm:min-h-75">
           {#await import('$lib/components/shared-components/map/map.svelte')}
             {#await delay(timeToLoadTheMap) then}
               <div class="flex items-center justify-center h-full w-full">
@@ -232,7 +239,7 @@
       </div>
 
       <!-- Right: saved locations sidebar -->
-      <div class="flex w-56 shrink-0 flex-col gap-2 border-l border-gray-200 pl-4 dark:border-gray-700">
+      <div class="flex w-full shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:w-56 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 dark:border-gray-700">
         <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           {$t('saved_locations')}
         </p>
@@ -246,7 +253,7 @@
           />
         {/if}
 
-        <div class="flex flex-1 flex-col gap-1 overflow-y-auto">
+        <div class="flex flex-col gap-1 overflow-y-auto max-h-40 sm:max-h-none sm:flex-1">
           {#if $savedLocations.length === 0}
             <p class="text-sm text-gray-400 dark:text-gray-500">{$t('no_saved_locations')}</p>
           {:else}
@@ -310,5 +317,25 @@
         {/if}
       </div>
     </div>
-  {/snippet}
-</ConfirmModal>
+  </ModalBody>
+
+  <ModalFooter>
+    <HStack fullWidth>
+      <Button shape="round" color="secondary" fullWidth onclick={() => onClose()}>
+        {$t('cancel')}
+      </Button>
+      <Button
+        shape="round"
+        color="secondary"
+        fullWidth
+        leadingIcon={mdiMapMarkerOffOutline}
+        onclick={handleNoLocation}
+      >
+        {isAssetNoLocation ? $t('unassign_location') : $t('no_location')}
+      </Button>
+      <Button shape="round" color="primary" fullWidth disabled={!point} onclick={handleApplyCoordinates}>
+        {$t('confirm')}
+      </Button>
+    </HStack>
+  </ModalFooter>
+</Modal>

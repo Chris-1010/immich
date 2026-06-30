@@ -57,6 +57,11 @@ export enum AssetOrder {
   Desc = 'desc',
 }
 
+export enum TimeBucketField {
+  DateTaken = 'dateTaken',
+  DateAdded = 'dateAdded',
+}
+
 export enum DatabaseAction {
   Create = 'CREATE',
   Update = 'UPDATE',

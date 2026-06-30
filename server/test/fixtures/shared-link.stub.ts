@@ -245,6 +245,7 @@ export const sharedLinkStub = {
             colorspace: 'sRGB',
             autoStackId: null,
             rating: 3,
+            noLocation: false,
             updatedAt: today,
             updateId: '42',
           },

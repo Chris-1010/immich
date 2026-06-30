@@ -1,10 +1,10 @@
 <script lang="ts">
-  import ChangeLocation from '$lib/components/shared-components/change-location.svelte';
+  import ChangeLocation, { type ChangeLocationResult } from '$lib/components/shared-components/change-location.svelte';
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import { user } from '$lib/stores/user.store';
   import { getOwnedAssetsWithWarning } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { updateAssets } from '@immich/sdk';
+  import { updateAssets, type AssetBulkUpdateDto } from '@immich/sdk';
   import { mdiMapMarkerMultipleOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import MenuOption from '../../shared-components/context-menu/menu-option.svelte';
@@ -18,17 +18,21 @@
 
   let isShowChangeLocation = $state(false);
 
-  async function handleConfirm(point?: { lng: number; lat: number }) {
+  async function handleConfirm(result?: ChangeLocationResult) {
     isShowChangeLocation = false;
 
-    if (!point) {
+    if (!result) {
       return;
     }
 
     const ids = getOwnedAssetsWithWarning(getOwnedAssets(), $user);
+    const assetBulkUpdateDto: AssetBulkUpdateDto =
+      result.type === 'coordinates'
+        ? { ids, latitude: result.point.lat, longitude: result.point.lng }
+        : { ids, noLocation: result.value };
 
     try {
-      await updateAssets({ assetBulkUpdateDto: { ids, latitude: point.lat, longitude: point.lng } });
+      await updateAssets({ assetBulkUpdateDto });
       clearSelect();
     } catch (error) {
       handleError(error, $t('errors.unable_to_update_location'));

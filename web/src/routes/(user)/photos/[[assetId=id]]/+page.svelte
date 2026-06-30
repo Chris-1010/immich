@@ -4,6 +4,7 @@
   import MemoryLane from '$lib/components/photos-page/memory-lane.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/empty-placeholder.svelte';
+  import { timelineSortField } from '$lib/stores/preferences.store';
   import AddToAlbum from '$lib/components/timeline/actions/AddToAlbumAction.svelte';
   import ArchiveAction from '$lib/components/timeline/actions/ArchiveAction.svelte';
   import AssetJobActions from '$lib/components/timeline/actions/AssetJobActions.svelte';
@@ -34,15 +35,21 @@
     type OnUnlink,
   } from '$lib/utils/actions';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
-  import { AssetVisibility } from '@immich/sdk';
+  import { AssetVisibility, TimeBucketField } from '@immich/sdk';
+  import { Button } from '@immich/ui';
 
-  import { mdiDotsVertical, mdiPlus } from '@mdi/js';
+  import { mdiCalendar, mdiCloudUploadOutline, mdiDotsVertical, mdiPlus } from '@mdi/js';
 
   import { t } from 'svelte-i18n';
 
   let { isViewing: showAssetViewer } = assetViewingStore;
   let timelineManager = $state<TimelineManager>() as TimelineManager;
-  const options = { visibility: AssetVisibility.Timeline, withStacked: true, withPartners: true };
+  let options = $derived({
+    visibility: AssetVisibility.Timeline,
+    withStacked: true,
+    withPartners: true,
+    timeBucketField: $timelineSortField,
+  });
 
   const assetInteraction = new AssetInteraction();
 
@@ -88,6 +95,20 @@
 </script>
 
 <UserPageLayout hideNavbar={assetInteraction.selectionActive} showUploadButton scrollbar={false}>
+  {#snippet buttons()}
+    <Button
+      size="small"
+      color={$timelineSortField === TimeBucketField.DateAdded ? 'primary' : 'secondary'}
+      variant={$timelineSortField === TimeBucketField.DateAdded ? 'filled' : 'ghost'}
+      leadingIcon={$timelineSortField === TimeBucketField.DateAdded ? mdiCloudUploadOutline : mdiCalendar}
+      onclick={() =>
+        ($timelineSortField =
+          $timelineSortField === TimeBucketField.DateAdded ? TimeBucketField.DateTaken : TimeBucketField.DateAdded)}
+    >
+      {$timelineSortField === TimeBucketField.DateAdded ? $t('sort_by_date_added') : $t('sort_by_date_taken')}
+    </Button>
+  {/snippet}
+
   <Timeline
     enableRouting={true}
     bind:timelineManager

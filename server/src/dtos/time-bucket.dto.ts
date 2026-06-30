@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 import { IsString } from 'class-validator';
-import { AssetOrder, AssetVisibility } from 'src/enum';
+import { AssetOrder, AssetVisibility, TimeBucketField } from 'src/enum';
 import { ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
 export class TimeBucketDto {
@@ -45,6 +45,14 @@ export class TimeBucketDto {
     optional: true,
   })
   order?: AssetOrder;
+
+  @ValidateEnum({
+    enum: TimeBucketField,
+    name: 'TimeBucketField',
+    description: 'Field to group and sort time buckets by (dateTaken or dateAdded)',
+    optional: true,
+  })
+  timeBucketField?: TimeBucketField;
 
   @ValidateEnum({
     enum: AssetVisibility,
@@ -213,6 +221,14 @@ export class TimeBucketAssetResponseDto {
     description: 'Array of longitude coordinates extracted from EXIF GPS data',
   })
   longitude!: number[];
+
+  @ApiProperty({
+    type: 'array',
+    required: false,
+    items: { type: 'boolean' },
+    description: 'Array indicating whether each asset is deliberately marked as having no location',
+  })
+  noLocation!: boolean[];
 }
 
 export class TimeBucketsResponseDto {

@@ -61,6 +61,9 @@ export class UpdateAssetBase {
   @Optional()
   @IsString()
   description?: string;
+
+  @ValidateBoolean({ optional: true })
+  noLocation?: boolean;
 }
 
 export class AssetBulkUpdateDto extends UpdateAssetBase {

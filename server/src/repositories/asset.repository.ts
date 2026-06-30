@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ExpressionBuilder, Insertable, Kysely, NotNull, Selectable, sql, Updateable, UpdateResult } from 'kysely';
 import { isEmpty, isUndefined, omitBy } from 'lodash';
 import { InjectKysely } from 'nestjs-kysely';
-import { LockableProperty, Stack } from 'src/database';
+import { lockableProperties, LockableProperty, Stack } from 'src/database';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFileType, AssetMetadataKey, AssetOrder, AssetStatus, AssetType, AssetVisibility } from 'src/enum';
+import { AssetFileType, AssetMetadataKey, AssetOrder, AssetStatus, AssetType, AssetVisibility, TimeBucketField } from 'src/enum';
 import { DB } from 'src/schema';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
 import { AssetFileTable } from 'src/schema/tables/asset-file.table';
@@ -16,6 +16,7 @@ import {
   asUuid,
   hasPeople,
   removeUndefinedKeys,
+  truncatedCreatedAt,
   truncatedDate,
   unnest,
   withDefaultVisibility,
@@ -66,6 +67,7 @@ interface AssetBuilderOptions {
 
 export interface TimeBucketOptions extends AssetBuilderOptions {
   order?: AssetOrder;
+  timeBucketField?: TimeBucketField;
 }
 
 export interface TimeBucketItem {
@@ -176,6 +178,7 @@ export class AssetRepository {
                 bitsPerSample: ref('bitsPerSample'),
                 rating: ref('rating'),
                 fps: ref('fps'),
+                noLocation: ref('noLocation'),
                 lockedProperties:
                   lockedPropertiesBehavior === 'append'
                     ? distinctLocked(eb, exif.lockedProperties ?? null)
@@ -200,7 +203,35 @@ export class AssetRepository {
       .updateTable('asset_exif')
       .set((eb) => ({
         ...options,
-        lockedProperties: distinctLocked(eb, Object.keys(options) as LockableProperty[]),
+        lockedProperties: distinctLocked(
+          eb,
+          lockableProperties.filter((property) => property in options),
+        ),
+      }))
+      .where('assetId', 'in', ids)
+      .execute();
+  }
+
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  @Chunked()
+  async clearNoLocation(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    await this.db
+      .updateTable('asset_exif')
+      .set(() => ({
+        noLocation: false,
+        // Unlock latitude/longitude so a future metadata re-scan can re-derive coordinates.
+        lockedProperties: sql`nullif(
+          array(
+            select unnest("lockedProperties")
+            except
+            select unnest(array['latitude', 'longitude']::varchar[])
+          ),
+          '{}'
+        )`,
       }))
       .where('assetId', 'in', ids)
       .execute();
@@ -601,7 +632,9 @@ export class AssetRepository {
       .with('asset', (qb) =>
         qb
           .selectFrom('asset')
-          .select(truncatedDate<Date>().as('timeBucket'))
+          .select(
+            (options.timeBucketField === TimeBucketField.DateAdded ? truncatedCreatedAt<Date>() : truncatedDate<Date>()).as('timeBucket'),
+          )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(options.visibility === undefined, withDefaultVisibility)
@@ -629,7 +662,8 @@ export class AssetRepository {
           .$if(!!options.withoutCoordinates, (qb) =>
             qb
               .leftJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
-              .where('asset_exif.latitude', 'is', null),
+              .where('asset_exif.latitude', 'is', null)
+              .where('asset_exif.noLocation', '=', false),
           ),
       )
       .selectFrom('asset')
@@ -657,12 +691,16 @@ export class AssetRepository {
             sql`asset.type = 'IMAGE'`.as('isImage'),
             sql`asset."deletedAt" is not null`.as('isTrashed'),
             'asset.livePhotoVideoId',
-            sql`extract(epoch from (asset."localDateTime" AT TIME ZONE 'UTC' - asset."fileCreatedAt" at time zone 'UTC'))::real / 3600`.as(
-              'localOffsetHours',
-            ),
+            (options.timeBucketField === TimeBucketField.DateAdded
+              ? sql`0`
+              : sql`extract(epoch from (asset."localDateTime" AT TIME ZONE 'UTC' - asset."fileCreatedAt" at time zone 'UTC'))::real / 3600`
+            ).as('localOffsetHours'),
             'asset.ownerId',
             'asset.status',
-            sql`asset."fileCreatedAt" at time zone 'utc'`.as('fileCreatedAt'),
+            (options.timeBucketField === TimeBucketField.DateAdded
+              ? sql`asset."createdAt" at time zone 'utc'`
+              : sql`asset."fileCreatedAt" at time zone 'utc'`
+            ).as('fileCreatedAt'),
             eb.fn('encode', ['asset.thumbhash', sql.lit('base64')]).as('thumbhash'),
             'asset_exif.city',
             'asset_exif.country',
@@ -681,11 +719,17 @@ export class AssetRepository {
               )
               .as('ratio'),
           ])
-          .$if(!!options.withCoordinates, (qb) => qb.select(['asset_exif.latitude', 'asset_exif.longitude']))
+          .$if(!!options.withCoordinates, (qb) =>
+            qb.select(['asset_exif.latitude', 'asset_exif.longitude', 'asset_exif.noLocation']),
+          )
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(options.visibility == undefined, withDefaultVisibility)
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
-          .where(truncatedDate(), '=', timeBucket.replace(/^[+-]/, ''))
+          .where(
+            options.timeBucketField === TimeBucketField.DateAdded ? truncatedCreatedAt() : truncatedDate(),
+            '=',
+            timeBucket.replace(/^[+-]/, ''),
+          )
           .$if(!!options.albumId, (qb) =>
             qb.where((eb) =>
               eb.exists(
@@ -731,8 +775,13 @@ export class AssetRepository {
           )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
-          .$if(!!options.withoutCoordinates, (qb) => qb.where('asset_exif.latitude', 'is', null))
-          .orderBy('asset.fileCreatedAt', options.order ?? 'desc'),
+          .$if(!!options.withoutCoordinates, (qb) =>
+            qb.where('asset_exif.latitude', 'is', null).where('asset_exif.noLocation', '=', false),
+          )
+          .orderBy(
+            options.timeBucketField === TimeBucketField.DateAdded ? 'asset.createdAt' : 'asset.fileCreatedAt',
+            options.order ?? 'desc',
+          ),
       )
       .with('agg', (qb) =>
         qb
@@ -760,6 +809,7 @@ export class AssetRepository {
             qb.select((eb) => [
               eb.fn.coalesce(eb.fn('array_agg', ['latitude']), sql.lit('{}')).as('latitude'),
               eb.fn.coalesce(eb.fn('array_agg', ['longitude']), sql.lit('{}')).as('longitude'),
+              eb.fn.coalesce(eb.fn('array_agg', ['noLocation']), sql.lit('{}')).as('noLocation'),
             ]),
           )
           .$if(!!options.withStacked, (qb) =>

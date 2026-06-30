@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { Theme, defaultLang } from '$lib/constants';
 import { getPreferredLocale } from '$lib/utils/i18n';
+import { TimeBucketField } from '@immich/sdk';
 import { persisted } from 'svelte-persisted-store';
 
 export interface ThemeSetting {
@@ -60,6 +61,8 @@ export const videoViewerVolume = persisted<number>('video-viewer-volume', 1, {})
 export const videoViewerMuted = persisted<boolean>('video-viewer-muted', false, {});
 
 export const isShowDetail = persisted<boolean>('info-opened', false, {});
+
+export const timelineSortField = persisted<TimeBucketField>('timeline-sort-field', TimeBucketField.DateTaken);
 
 export interface AlbumViewSettings {
   view: string;
