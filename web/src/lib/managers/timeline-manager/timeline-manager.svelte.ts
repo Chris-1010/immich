@@ -22,7 +22,7 @@ import {
   type TimelineDateTime,
   type TimelineYearMonth,
 } from '$lib/utils/timeline-util';
-import { AssetOrder, getAssetInfo, getTimeBuckets, type AssetResponseDto } from '@immich/sdk';
+import { AssetOrder, getAssetInfo, getTimeBuckets, TimeBucketField, type AssetResponseDto } from '@immich/sdk';
 import { clamp, isEqual } from 'lodash-es';
 import { SvelteDate, SvelteSet } from 'svelte/reactivity';
 import { DayGroup } from './day-group.svelte';
@@ -66,6 +66,9 @@ export class TimelineManager extends VirtualScrollManager {
 
   isInitialized = $state(false);
   isScrollingOnLoad = false;
+  // Selection to scroll to after the next filter-driven reload, set by the page before it toggles
+  // a filter and consumed once by the grid once the reload settles.
+  #pendingFilterScroll: { assets: TimelineAsset[]; sortField: TimeBucketField } | null = null;
   months: MonthGroup[] = $state([]);
   albumAssets: Set<string> = new SvelteSet();
   scrubberMonths: ScrubberMonth[] = $state([]);
@@ -104,6 +107,18 @@ export class TimelineManager extends VirtualScrollManager {
 
   toggleShowAssetOwners() {
     this.#showAssetOwners.current = !this.#showAssetOwners.current;
+  }
+
+  // Record a selection to follow across the next filter-driven reload. Call immediately before
+  // changing a filter so the change in options triggers the reload that then consumes this.
+  requestScrollToSelection(assets: TimelineAsset[], sortField: TimeBucketField) {
+    this.#pendingFilterScroll = { assets: [...assets], sortField };
+  }
+
+  consumePendingFilterScroll() {
+    const request = this.#pendingFilterScroll;
+    this.#pendingFilterScroll = null;
+    return request;
   }
 
   constructor() {
@@ -250,8 +265,20 @@ export class TimelineManager extends VirtualScrollManager {
     if (this.#options !== TimelineManager.#INIT_OPTIONS && isEqual(this.#options, options)) {
       return;
     }
+    // A re-init (filter/sort change after the first load) rebuilds every month group. The scroll
+    // element keeps its previous offset, which can now point past the new — often much shorter —
+    // timeline, leaving no month intersecting the viewport so nothing loads or renders until a
+    // manual scroll/refresh. Reset to the top so the reloaded timeline behaves like a fresh mount.
+    // Skip this when a selection scroll is pending: the grid repositions to the selection right
+    // after this reload, and resetting to the top first would flash the top of the timeline and
+    // race with that scroll.
+    const isReinit = this.#options !== TimelineManager.#INIT_OPTIONS;
     await this.initTask.reset();
     await this.#init(options);
+    if (isReinit && !this.#pendingFilterScroll) {
+      this.scrollTo(0);
+      this.updateSlidingWindow();
+    }
     this.updateViewportGeometry(false);
     this.#createScrubberMonths();
   }
