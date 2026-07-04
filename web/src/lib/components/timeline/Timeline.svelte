@@ -23,7 +23,18 @@
   import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { isAssetViewerRoute, navigate } from '$lib/utils/navigation';
   import { getTimes, type ScrubberListener } from '$lib/utils/timeline-util';
-  import { type AlbumResponseDto, type PersonResponseDto, type UserResponseDto } from '@immich/sdk';
+  import { authManager } from '$lib/managers/auth-manager.svelte';
+  import {
+    findClosestGroupForDate,
+    getMonthGroupByDate,
+  } from '$lib/managers/timeline-manager/internal/search-support.svelte';
+  import {
+    getAssetInfo,
+    TimeBucketField,
+    type AlbumResponseDto,
+    type PersonResponseDto,
+    type UserResponseDto,
+  } from '@immich/sdk';
   import { DateTime } from 'luxon';
   import { onDestroy, onMount, type Snippet } from 'svelte';
   import type { UpdatePayload } from 'vite';
@@ -95,7 +106,22 @@
 
   timelineManager = new TimelineManager();
   onDestroy(() => timelineManager.destroy());
-  $effect(() => options && void timelineManager.updateOptions(options));
+
+  $effect(() => {
+    if (!options) {
+      return;
+    }
+    const reloadOptions = options;
+    void (async () => {
+      await timelineManager.updateOptions(reloadOptions);
+      // A filter toggle reloads the timeline; if the page asked to follow the selection, scroll
+      // to it now that the new buckets are in place.
+      const request = timelineManager.consumePendingFilterScroll();
+      if (request) {
+        await scrollToSelectionAfterFilter(request.assets, request.sortField);
+      }
+    })();
+  });
 
   let { isViewing: showAssetViewer, asset: viewingAsset, gridScrollTarget } = assetViewingStore;
 
@@ -206,6 +232,77 @@
     }
     scrollToAssetPosition(asset.id, monthGroup);
     return true;
+  };
+
+  // Resolve the year/month bucket an asset falls into for the active sort field. Date added is
+  // bucketed by the asset's createdAt; date taken by its localDateTime (both truncated in UTC).
+  const assetYearMonth = (asset: { createdAt: string; localDateTime: string }, sortField: TimeBucketField) => {
+    const value = sortField === TimeBucketField.DateAdded ? asset.createdAt : asset.localDateTime;
+    const dateTime = DateTime.fromISO(value, { zone: 'utc' });
+    return { year: dateTime.year, month: dateTime.month };
+  };
+
+  // After a filter toggle, scroll to the first still-present selected asset's position. If none of
+  // the selected assets survived the filter, scroll to the first asset's date (or the closest
+  // available month). The selection itself is never cleared.
+  const scrollToSelectionAfterFilter = async (assets: TimelineAsset[], sortField: TimeBucketField) => {
+    // A reload keeps the previous scroll offset, which can land past the new (possibly much
+    // shorter) timeline and render blank. Resetting to the top and re-syncing the sliding window
+    // forces the visible months to load and render.
+    const resetToTop = () => {
+      timelineManager.scrollTo(0);
+      timelineManager.updateSlidingWindow();
+    };
+
+    if (assets.length === 0) {
+      resetToTop();
+      return;
+    }
+
+    // Force non-deferred layout for the whole locate-and-scroll. Month groups that aren't
+    // intersecting normally defer their layout, so loading the target month while the viewport is
+    // elsewhere would leave stale positions and scroll to a blank gap. Setting this before the load
+    // (as the deep-link path does) makes heights/positions accurate before computing the target.
+    timelineManager.isScrollingOnLoad = true;
+    try {
+      let firstYearMonth: { year: number; month: number } | undefined;
+      for (const asset of assets) {
+        const info = await getAssetInfo({ ...authManager.params, id: asset.id }).catch(() => null);
+        if (!info) {
+          continue;
+        }
+
+        const yearMonth = assetYearMonth(info, sortField);
+        firstYearMonth ??= yearMonth;
+
+        await timelineManager.loadMonthGroup(yearMonth);
+        const monthGroup = getMonthGroupByDate(timelineManager, yearMonth);
+        if (monthGroup?.findAssetById({ id: asset.id })) {
+          scrollToAssetPosition(asset.id, monthGroup);
+          return;
+        }
+      }
+
+      // No selected asset survived the filter: scroll to the first asset's date, or the closest
+      // available month.
+      if (firstYearMonth) {
+        const monthGroup =
+          getMonthGroupByDate(timelineManager, firstYearMonth) ??
+          findClosestGroupForDate(timelineManager.months, firstYearMonth);
+        if (monthGroup) {
+          await timelineManager.loadMonthGroup(monthGroup.yearMonth);
+          timelineManager.scrollTo(monthGroup.top);
+          timelineManager.updateSlidingWindow();
+          return;
+        }
+      }
+
+      // Couldn't resolve any target (e.g. asset lookups failed) — fall back to the top so the grid
+      // still renders rather than staying blank.
+      resetToTop();
+    } finally {
+      timelineManager.isScrollingOnLoad = false;
+    }
   };
 
   export const scrollAfterNavigate = async () => {

@@ -9,12 +9,20 @@
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
+  import { timelineSortField } from '$lib/stores/preferences.store';
   import { cancelMultiselect } from '$lib/utils/asset-utils';
   import { setQueryValue } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
-  import { AssetVisibility, getAssetInfo, getStack, updateAssets } from '@immich/sdk';
+  import { AssetVisibility, getAssetInfo, getStack, TimeBucketField, updateAssets } from '@immich/sdk';
   import { Button, LoadingSpinner, modalManager, Text } from '@immich/ui';
-  import { mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiPencilOutline, mdiSelectRemove } from '@mdi/js';
+  import {
+    mdiCalendar,
+    mdiCloudUploadOutline,
+    mdiMapMarkerMultipleOutline,
+    mdiMapMarkerOffOutline,
+    mdiPencilOutline,
+    mdiSelectRemove,
+  } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -39,7 +47,26 @@
     withPartners: true,
     withCoordinates: true,
     withoutCoordinates: filterNoGps || undefined,
+    timeBucketField: $timelineSortField,
   });
+
+  // Before toggling a filter, register scroll intent: with a selection the timeline follows it
+  // across the reload, otherwise it resets to the top (avoiding a blank grid after the reload).
+  const requestSelectionScroll = (sortField: TimeBucketField) => {
+    timelineManager.requestScrollToSelection(assetInteraction.selectedAssets, sortField);
+  };
+
+  const toggleNoGps = () => {
+    requestSelectionScroll($timelineSortField);
+    filterNoGps = !filterNoGps;
+  };
+
+  const toggleSortField = () => {
+    const next =
+      $timelineSortField === TimeBucketField.DateAdded ? TimeBucketField.DateTaken : TimeBucketField.DateAdded;
+    requestSelectionScroll(next);
+    $timelineSortField = next;
+  };
 
   const applyLocationUpdate = async () => {
     const idGroups = await Promise.all(
@@ -180,10 +207,21 @@
       </Button>
       <Button
         size="small"
+        color={$timelineSortField === TimeBucketField.DateAdded ? 'primary' : 'secondary'}
+        variant={$timelineSortField === TimeBucketField.DateAdded ? 'filled' : 'ghost'}
+        leadingIcon={$timelineSortField === TimeBucketField.DateAdded ? mdiCloudUploadOutline : mdiCalendar}
+        onclick={toggleSortField}
+      >
+        <Text class="hidden sm:inline-block">
+          {$timelineSortField === TimeBucketField.DateAdded ? $t('sort_by_date_added') : $t('sort_by_date_taken')}
+        </Text>
+      </Button>
+      <Button
+        size="small"
         color={filterNoGps ? 'primary' : 'secondary'}
         variant={filterNoGps ? 'filled' : 'ghost'}
         leadingIcon={mdiMapMarkerOffOutline}
-        onclick={() => (filterNoGps = !filterNoGps)}
+        onclick={toggleNoGps}
       >
         <Text class="hidden sm:inline-block">{$t('gps_missing')}</Text>
       </Button>

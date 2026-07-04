@@ -64,6 +64,15 @@
 
     return assetInteraction.isAllUserOwned && (isLivePhoto || isLivePhotoCandidate);
   });
+  const toggleSortField = () => {
+    const next =
+      $timelineSortField === TimeBucketField.DateAdded ? TimeBucketField.DateTaken : TimeBucketField.DateAdded;
+    // Always register intent: with a selection the grid follows it across the reload, otherwise it
+    // resets to the top (which also avoids a blank grid when the new sort is much shorter).
+    timelineManager.requestScrollToSelection(assetInteraction.selectedAssets, next);
+    $timelineSortField = next;
+  };
+
   const handleEscape = () => {
     if ($showAssetViewer) {
       return;
@@ -101,9 +110,7 @@
       color={$timelineSortField === TimeBucketField.DateAdded ? 'primary' : 'secondary'}
       variant={$timelineSortField === TimeBucketField.DateAdded ? 'filled' : 'ghost'}
       leadingIcon={$timelineSortField === TimeBucketField.DateAdded ? mdiCloudUploadOutline : mdiCalendar}
-      onclick={() =>
-        ($timelineSortField =
-          $timelineSortField === TimeBucketField.DateAdded ? TimeBucketField.DateTaken : TimeBucketField.DateAdded)}
+      onclick={toggleSortField}
     >
       {$timelineSortField === TimeBucketField.DateAdded ? $t('sort_by_date_added') : $t('sort_by_date_taken')}
     </Button>
