@@ -2,10 +2,11 @@
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
+  import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { createFace, getAllPeople, type PersonResponseDto } from '@immich/sdk';
-  import { Button, Input, modalManager, toastManager } from '@immich/ui';
+  import { Button, Input, toastManager } from '@immich/ui';
   import { Canvas, InteractiveFabricObject, Rect } from 'fabric';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -157,7 +158,25 @@
     }
   };
 
+  // The photo container sits in a negative z-index stacking context, so a fixed selector inside it
+  // would still paint behind the mobile detail sheet. Move it to the body to escape that.
+  const portalOnMobile = (node: HTMLElement) => {
+    if (!mobileDevice.maxMd) {
+      return;
+    }
+
+    document.body.append(node);
+
+    return {
+      destroy: () => node.remove(),
+    };
+  };
+
   const positionFaceSelector = () => {
+    if (mobileDevice.maxMd) {
+      return;
+    }
+
     if (!faceRect || !faceSelectorEl) {
       return;
     }
@@ -281,16 +300,6 @@
         return;
       }
 
-      const isConfirmed = await modalManager.showDialog({
-        prompt: person.name
-          ? $t('confirm_tag_face', { values: { name: person.name } })
-          : $t('confirm_tag_face_unnamed'),
-      });
-
-      if (!isConfirmed) {
-        return;
-      }
-
       await createFace({
         assetFaceCreateDto: {
           assetId,
@@ -314,7 +323,13 @@
   <div
     id="face-selector"
     bind:this={faceSelectorEl}
-    class="absolute top-[calc(50%-250px)] start-[calc(50%-125px)] max-w-[250px] w-[250px] bg-white dark:bg-immich-dark-gray dark:text-immich-dark-fg backdrop-blur-sm px-2 py-4 rounded-xl border border-gray-200 dark:border-gray-800"
+    use:portalOnMobile
+    class={[
+      'bg-white dark:bg-immich-dark-gray dark:text-immich-dark-fg backdrop-blur-sm px-2 py-4 border border-gray-200 dark:border-gray-800',
+      mobileDevice.maxMd
+        ? 'fixed bottom-0 start-0 end-0 z-30 w-full rounded-t-xl shadow-2xl'
+        : 'absolute top-[calc(50%-250px)] start-[calc(50%-125px)] max-w-[250px] w-[250px] rounded-xl',
+    ]}
   >
     <p class="text-center text-sm">{$t('select_person_to_tag')}</p>
 
@@ -322,7 +337,7 @@
       <Input placeholder={$t('search_people')} bind:value={searchTerm} size="tiny" />
     </div>
 
-    <div class="h-62.5 overflow-y-auto mt-2">
+    <div class={['overflow-y-auto mt-2', mobileDevice.maxMd ? 'max-h-[30svh]' : 'h-62.5']}>
       {#if filteredCandidates.length > 0}
         <div class="mt-2 rounded-lg">
           {#each filteredCandidates as person (person.id)}

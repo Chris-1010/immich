@@ -13,6 +13,7 @@
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { closeEditorCofirm } from '$lib/stores/asset-editor.store';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
+  import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { ocrManager } from '$lib/stores/ocr.svelte';
   import { alwaysLoadOriginalVideo, isShowDetail } from '$lib/stores/preferences.store';
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
@@ -108,6 +109,13 @@
   let previewStackedAsset: AssetResponseDto | undefined = $state();
   let isShowActivity = $state(false);
   let isShowEditor = $state(false);
+
+  const showDetailPanel = $derived(
+    enableDetailPanel && $slideshowState === SlideshowState.None && $isShowDetail && !isShowEditor,
+  );
+  // The panel is a bottom sheet on narrow screens: shrink the image into the space above it so
+  // face bounding boxes stay visible, matching the side-by-side layout on desktop.
+  const isDetailSheet = $derived(showDetailPanel && mobileDevice.maxMd);
   let fullscreenElement = $state<Element>();
   let unsubscribes: (() => void)[] = [];
   let selectedEditType: string = $state('');
@@ -466,7 +474,12 @@
   {/if}
 
   <!-- Asset Viewer -->
-  <div class="z-[-1] relative col-start-1 col-span-4 row-start-1 row-span-full">
+  <div
+    class={[
+      'z-[-1] relative col-start-1 col-span-4 row-start-1 row-span-full transition-[padding] duration-250',
+      isDetailSheet && 'pb-[50svh]',
+    ]}
+  >
     {#if previewStackedAsset}
       {#key previewStackedAsset.id}
         {#if previewStackedAsset.type === AssetTypeEnum.Image}
@@ -570,11 +583,16 @@
     </div>
   {/if}
 
-  {#if enableDetailPanel && $slideshowState === SlideshowState.None && $isShowDetail && !isShowEditor}
+  {#if showDetailPanel}
     <div
-      transition:fly={{ duration: 150 }}
+      transition:fly={mobileDevice.maxMd ? { duration: 250, y: '100%', opacity: 1 } : { duration: 150 }}
       id="detail-panel"
-      class="row-start-1 row-span-4 w-[360px] overflow-y-auto transition-all dark:border-l dark:border-s-immich-dark-gray bg-light"
+      class={[
+        'overflow-y-auto transition-all bg-light',
+        mobileDevice.maxMd
+          ? 'fixed bottom-0 start-0 end-0 z-10 h-[50svh] rounded-t-2xl shadow-2xl overscroll-contain'
+          : 'row-start-1 row-span-4 w-[360px] dark:border-l dark:border-s-immich-dark-gray',
+      ]}
       translate="yes"
     >
       <DetailPanel {asset} currentAlbum={album} albums={appearsInAlbums} onClose={() => ($isShowDetail = false)} />
