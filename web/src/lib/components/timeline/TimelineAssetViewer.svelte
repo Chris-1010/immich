@@ -38,9 +38,20 @@
     person = null,
   }: Props = $props();
 
+  // A non-primary stack member is not present in the timeline (only the stack primary is), so anchor
+  // arrow navigation to the primary. This keeps the arrows moving between timeline images rather than
+  // dead-ending when the viewer is showing a stacked child (e.g. after tagging a face on it).
+  const getNavigationAnchor = () => {
+    const current = $viewingAsset;
+    if (current.stack && current.id !== current.stack.primaryAssetId) {
+      return { id: current.stack.primaryAssetId };
+    }
+    return current;
+  };
+
   const handlePrevious = async () => {
     const release = await mutex.acquire();
-    const laterAsset = await timelineManager.getLaterAsset($viewingAsset);
+    const laterAsset = await timelineManager.getLaterAsset(getNavigationAnchor());
 
     if (laterAsset) {
       const preloadAsset = await timelineManager.getLaterAsset(laterAsset);
@@ -55,7 +66,7 @@
 
   const handleNext = async () => {
     const release = await mutex.acquire();
-    const earlierAsset = await timelineManager.getEarlierAsset($viewingAsset);
+    const earlierAsset = await timelineManager.getEarlierAsset(getNavigationAnchor());
 
     if (earlierAsset) {
       const preloadAsset = await timelineManager.getEarlierAsset(earlierAsset);

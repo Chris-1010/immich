@@ -625,8 +625,14 @@
               dimmed={stackedAsset.id !== asset.id}
               asset={toTimelineAsset(stackedAsset)}
               onClick={() => {
-                asset = stackedAsset;
                 previewStackedAsset = undefined;
+                // The stack endpoint returns assets without people/faces, so fetch the full
+                // asset info to keep face tags visible when switching between stacked images.
+                handlePromiseError(
+                  getAssetInfo({ ...authManager.params, id: stackedAsset.id }).then((info) => {
+                    asset = info;
+                  }),
+                );
               }}
               onMouseEvent={({ isMouseOver }) => handleStackedAssetMouseEvent(isMouseOver, stackedAsset)}
               readonly
