@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { focusTrap } from '$lib/actions/focus-trap';
+  import { shortcuts } from '$lib/actions/shortcut';
   import type { Action, OnAction, PreAction } from '$lib/components/asset-viewer/actions/action';
   import MotionPhotoAction from '$lib/components/asset-viewer/actions/motion-photo-action.svelte';
   import NextAssetAction from '$lib/components/asset-viewer/actions/next-asset-action.svelte';
@@ -12,6 +13,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { closeEditorCofirm } from '$lib/stores/asset-editor.store';
+  import { isFaceEditMode } from '$lib/stores/face-edit.svelte';
   import { assetViewingStore } from '$lib/stores/asset-viewing.store';
   import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { ocrManager } from '$lib/stores/ocr.svelte';
@@ -293,6 +295,18 @@
     }
   };
 
+  // Mirror the "tag people" (+) button in the detail panel: toggle face-edit mode so the drawing
+  // box appears without needing the panel open. Gated to the owner, matching the button's visibility.
+  const handleToggleFaceEdit = () => {
+    if (authManager.isSharedLink || $user?.id !== asset.ownerId) {
+      return;
+    }
+    if ($slideshowState !== SlideshowState.None || isShowEditor) {
+      return;
+    }
+    isFaceEditMode.value = !isFaceEditMode.value;
+  };
+
   /**
    * Slide show mode
    */
@@ -415,7 +429,13 @@
 
 <OnEvents onAssetReplace={handleAssetReplace} />
 
-<svelte:document bind:fullscreenElement />
+<svelte:document
+  bind:fullscreenElement
+  use:shortcuts={[
+    { shortcut: { key: '+', shift: true }, onShortcut: handleToggleFaceEdit },
+    { shortcut: { key: '+' }, onShortcut: handleToggleFaceEdit },
+  ]}
+/>
 
 <section
   id="immich-asset-viewer"
