@@ -349,6 +349,17 @@
   const handleStackedAssetMouseEvent = (isMouseOver: boolean, asset: AssetResponseDto) => {
     previewStackedAsset = isMouseOver ? asset : undefined;
   };
+
+  const selectStackedAsset = (stackedAsset: AssetResponseDto) => {
+    previewStackedAsset = undefined;
+    // The stack endpoint returns assets without people/faces, so fetch the full
+    // asset info to keep face tags visible when switching between stacked images.
+    handlePromiseError(
+      getAssetInfo({ ...authManager.params, id: stackedAsset.id }).then((info) => {
+        asset = info;
+      }),
+    );
+  };
   const handlePreAction = (action: Action) => {
     preAction?.(action);
   };
@@ -615,7 +626,14 @@
       ]}
       translate="yes"
     >
-      <DetailPanel {asset} currentAlbum={album} albums={appearsInAlbums} onClose={() => ($isShowDetail = false)} />
+      <DetailPanel
+        {asset}
+        {stack}
+        onSelectStackedAsset={selectStackedAsset}
+        currentAlbum={album}
+        albums={appearsInAlbums}
+        onClose={() => ($isShowDetail = false)}
+      />
     </div>
   {/if}
 
@@ -644,16 +662,7 @@
               brokenAssetClass="text-xs"
               dimmed={stackedAsset.id !== asset.id}
               asset={toTimelineAsset(stackedAsset)}
-              onClick={() => {
-                previewStackedAsset = undefined;
-                // The stack endpoint returns assets without people/faces, so fetch the full
-                // asset info to keep face tags visible when switching between stacked images.
-                handlePromiseError(
-                  getAssetInfo({ ...authManager.params, id: stackedAsset.id }).then((info) => {
-                    asset = info;
-                  }),
-                );
-              }}
+              onClick={() => selectStackedAsset(stackedAsset)}
               onMouseEvent={({ isMouseOver }) => handleStackedAssetMouseEvent(isMouseOver, stackedAsset)}
               readonly
               thumbnailSize={stackedAsset.id === asset.id ? stackSelectedThumbnailSize : stackThumbnailSize}

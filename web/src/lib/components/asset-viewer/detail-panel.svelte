@@ -19,7 +19,14 @@
   import { getMetadataSearchQuery } from '$lib/utils/metadata-search';
   import { fromISODateTime, fromISODateTimeUTC, toTimelineAsset } from '$lib/utils/timeline-util';
   import { getParentPath } from '$lib/utils/tree-utils';
-  import { AssetMediaSize, getAssetInfo, type AlbumResponseDto, type AssetResponseDto } from '@immich/sdk';
+  import { getAltText } from '$lib/utils/thumbnail-util';
+  import {
+    AssetMediaSize,
+    getAssetInfo,
+    type AlbumResponseDto,
+    type AssetResponseDto,
+    type StackResponseDto,
+  } from '@immich/sdk';
   import { Icon, IconButton, LoadingSpinner, modalManager } from '@immich/ui';
   import {
     mdiCalendar,
@@ -45,10 +52,22 @@
     asset: AssetResponseDto;
     albums?: AlbumResponseDto[];
     currentAlbum?: AlbumResponseDto | null;
+    stack?: StackResponseDto | null;
+    onSelectStackedAsset?: (asset: AssetResponseDto) => void;
     onClose: () => void;
   }
 
-  let { asset, albums = [], currentAlbum = null, onClose }: Props = $props();
+  let {
+    asset,
+    albums = [],
+    currentAlbum = null,
+    stack = null,
+    onSelectStackedAsset = undefined,
+    onClose,
+  }: Props = $props();
+
+  let stackedAssets = $derived(stack?.assets ?? []);
+  let stackIndex = $derived(stackedAssets.findIndex(({ id }) => id === asset.id));
 
   let showAssetPath = $state(false);
   let showEditFaces = $state(false);
@@ -153,6 +172,33 @@
         <div class="rounded-b bg-red-500 px-4 py-2 text-white text-sm">
           <p>{asset.originalPath}</p>
         </div>
+      </div>
+    </section>
+  {/if}
+
+  {#if stackedAssets.length > 1}
+    <section class="px-4 pt-4">
+      <p class="text-sm text-immich-fg dark:text-immich-dark-fg">
+        {$t('stack_item_position', { values: { index: stackIndex + 1, count: stackedAssets.length } })}
+      </p>
+      <div class="mt-2 flex flex-row flex-nowrap gap-2 overflow-x-auto overflow-y-hidden horizontal-scrollbar pb-2">
+        {#each stackedAssets as stackedAsset (stackedAsset.id)}
+          <button
+            type="button"
+            class="shrink-0 rounded-lg overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onclick={() => onSelectStackedAsset?.(stackedAsset)}
+          >
+            <img
+              src={getAssetThumbnailUrl({ id: stackedAsset.id, size: AssetMediaSize.Thumbnail, cacheKey: stackedAsset.thumbhash })}
+              alt={$getAltText(toTimelineAsset(stackedAsset))}
+              draggable="false"
+              class={[
+                'size-16 object-cover rounded-lg transition-all',
+                stackedAsset.id === asset.id ? 'ring-2 ring-primary' : 'opacity-60 hover:opacity-100',
+              ]}
+            />
+          </button>
+        {/each}
       </div>
     </section>
   {/if}
