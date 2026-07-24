@@ -902,6 +902,7 @@
   "downloading": "Downloading",
   "downloading_asset_filename": "Downloading asset {filename}",
   "downloading_media": "Downloading media",
+  "draw_box_around_face": "Draw a box around the face",
   "drop_files_to_upload": "Drop files anywhere to upload",
   "duplicates": "Duplicates",
   "duplicates_description": "Resolve each group by indicating which, if any, are duplicates",

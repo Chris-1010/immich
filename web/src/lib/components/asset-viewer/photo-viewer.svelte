@@ -123,12 +123,6 @@
 
   const onPlaySlideshow = () => ($slideshowState = SlideshowState.PlaySlideshow);
 
-  $effect(() => {
-    if (isFaceEditMode.value && $photoZoomState.currentZoom > 1) {
-      zoomToggle();
-    }
-  });
-
   const onCopyShortcut = (event: KeyboardEvent) => {
     if (globalThis.getSelection()?.type === 'Range') {
       return;
