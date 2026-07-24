@@ -35,12 +35,17 @@
 
   let { assetId, assetType, onClose, onRefresh }: Props = $props();
 
+  // Auto-detected faces on videos come from a low-res preview frame and are unrecognisable, so the
+  // unassigned suggestions are hidden; only people that have actually been tagged are shown.
+  const isVideo = assetType === AssetTypeEnum.Video;
+
   // keep track of the changes
   let peopleToCreate: string[] = [];
   let assetFaceGenerated: string[] = [];
 
   // faces
   let peopleWithFaces: AssetFaceResponseDto[] = $state([]);
+  let displayedFaces = $derived(isVideo ? peopleWithFaces.filter((face) => face.person != null) : peopleWithFaces);
   let selectedPersonToReassign: Record<string, PersonResponseDto> = $state({});
   let selectedPersonToCreate: Record<string, string> = $state({});
   let editedFace: AssetFaceResponseDto | undefined = $state();
@@ -220,15 +225,15 @@
           <LoadingSpinner />
         </div>
       {:else}
-        {#each peopleWithFaces as face, index (face.id)}
+        {#each displayedFaces as face, index (face.id)}
           {@const personName = face.person ? face.person?.name : $t('face_unassigned')}
           <div class="relative h-29 w-24">
             <div
               role="button"
               tabindex={index}
               class="absolute start-0 top-0 h-22.5 w-22.5 cursor-default"
-              onfocus={() => ($boundingBoxesArray = [peopleWithFaces[index]])}
-              onmouseover={() => ($boundingBoxesArray = [peopleWithFaces[index]])}
+              onfocus={() => !isVideo && ($boundingBoxesArray = [face])}
+              onmouseover={() => !isVideo && ($boundingBoxesArray = [face])}
               onmouseleave={() => ($boundingBoxesArray = [])}
             >
               <div class="relative">
