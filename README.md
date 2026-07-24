@@ -1,49 +1,21 @@
-<p align="center"> 
-  <br/>
-  <a href="https://opensource.org/license/agpl-v3"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg?color=3F51B5&style=for-the-badge&label=License&logoColor=000000&labelColor=ececec" alt="License: AGPLv3"></a>
-  <a href="https://discord.immich.app">
-    <img src="https://img.shields.io/discord/979116623879368755.svg?label=Discord&logo=Discord&style=for-the-badge&logoColor=000000&labelColor=ececec" alt="Discord"/>
-  </a>
-  <br/>
-  <br/>
-</p>
+# Immich (Custom Fork)
 
-<p align="center">
-<img src="design/immich-logo-stacked-light.svg" width="300" title="Login With Custom URL">
-</p>
-<h3 align="center">High performance self-hosted photo and video management solution</h3>
-<br/>
-<a href="https://immich.app">
-<img src="design/immich-screenshots.png" title="Main Screenshot">
-</a>
-<br/>
+This is a personal fork of [Immich](https://github.com/immich-app/immich), based on **v2.4.1**, with a set of web-app enhancements layered on top of upstream. It tracks upstream Immich but adds the following features:
 
-<p align="center">
-  <a href="readme_i18n/README_ca_ES.md">Català</a>
-  <a href="readme_i18n/README_es_ES.md">Español</a>
-  <a href="readme_i18n/README_fr_FR.md">Français</a>
-  <a href="readme_i18n/README_it_IT.md">Italiano</a>
-  <a href="readme_i18n/README_ja_JP.md">日本語</a>
-  <a href="readme_i18n/README_ko_KR.md">한국어</a>
-  <a href="readme_i18n/README_de_DE.md">Deutsch</a>
-  <a href="readme_i18n/README_nl_NL.md">Nederlands</a>
-  <a href="readme_i18n/README_tr_TR.md">Türkçe</a>
-  <a href="readme_i18n/README_zh_CN.md">简体中文</a>
-  <a href="readme_i18n/README_zh_TW.md">正體中文</a>
-  <a href="readme_i18n/README_uk_UA.md">Українська</a>
-  <a href="readme_i18n/README_ru_RU.md">Русский</a>
-  <a href="readme_i18n/README_pt_BR.md">Português Brasileiro</a>
-  <a href="readme_i18n/README_sv_SE.md">Svenska</a>
-  <a href="readme_i18n/README_ar_JO.md">العربية</a>
-  <a href="readme_i18n/README_vi_VN.md">Tiếng Việt</a>
-  <a href="readme_i18n/README_th_TH.md">ภาษาไทย</a>
-</p>
+## Added features
 
+- **Saved locations in the location picker** — pin frequently used places for quick reuse when setting an asset's location.
+- **"No Location" asset state and no-GPS filter** — mark and filter assets that have no GPS data.
+- **Date Added / Date Captured sort toggle** in location management.
+- **Timeline filters follow the selection** — toggling a timeline filter scrolls the view to keep the current selection in sight.
+- **Reworked asset-viewer face tagging** — draw a box directly over a face to tag it, including direct tagging on videos.
+- **`+` keyboard shortcut** to tag a face.
+- **Improved face tagging on mobile web.**
+- **Low-res auto-detected face suggestions hidden for videos** to reduce noise.
+- **Face tags and timeline navigation kept working inside stacks.**
+- **Stack item selector** shown in the asset info panel.
 
-> [!WARNING]
-> ⚠️ Always follow [3-2-1](https://www.backblaze.com/blog/the-3-2-1-backup-strategy/) backup plan for your precious photos and videos!
-> 
- 
+For the original project's full documentation, everything below this point is upstream Immich's README.
 
 > [!NOTE]
 > You can find the main documentation, including installation guides, at https://immich.app/.
