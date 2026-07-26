@@ -62,7 +62,9 @@ class TimelineFactory {
 
   TimelineService favorite(String userId) => TimelineService(_timelineRepository.favorite(userId, groupBy));
 
-  TimelineService trash(String userId) => TimelineService(_timelineRepository.trash(userId, groupBy));
+  TimelineService trash(String userId) => TimelineService(
+    _timelineRepository.trash(userId, groupBy, sortByDeletedAt: _settingsService.get(Setting.trashSortByDateDeleted)),
+  );
 
   TimelineService archive(String userId) => TimelineService(_timelineRepository.archived(userId, groupBy));
 

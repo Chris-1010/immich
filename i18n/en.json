@@ -2170,6 +2170,8 @@
   "slideshow_repeat_description": "Loop back to beginning when slideshow ends",
   "slideshow_settings": "Slideshow settings",
   "sort_albums_by": "Sort albums by...",
+  "sort_by_date_deleted": "Date deleted",
+  "sort_by_date_taken": "Date taken",
   "sort_created": "Date created",
   "sort_items": "Number of items",
   "sort_modified": "Date modified",

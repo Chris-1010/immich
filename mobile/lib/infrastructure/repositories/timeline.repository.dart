@@ -325,11 +325,12 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     origin: TimelineOrigin.favorite,
   );
 
-  TimelineQuery trash(String userId, GroupAssetsBy groupBy) => _remoteQueryBuilder(
+  TimelineQuery trash(String userId, GroupAssetsBy groupBy, {bool sortByDeletedAt = true}) => _remoteQueryBuilder(
     filter: (row) => row.deletedAt.isNotNull() & row.ownerId.equals(userId),
     groupBy: groupBy,
     origin: TimelineOrigin.trash,
     joinLocal: true,
+    dateField: sortByDeletedAt ? _TimelineDateField.deleted : _TimelineDateField.created,
   );
 
   TimelineQuery archived(String userId, GroupAssetsBy groupBy) => _remoteQueryBuilder(
@@ -605,11 +606,12 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     required TimelineOrigin origin,
     GroupAssetsBy groupBy = GroupAssetsBy.day,
     bool joinLocal = false,
+    _TimelineDateField dateField = _TimelineDateField.created,
   }) {
     return (
-      bucketSource: () => _watchRemoteBucket(filter: filter, groupBy: groupBy),
+      bucketSource: () => _watchRemoteBucket(filter: filter, groupBy: groupBy, dateField: dateField),
       assetSource: (offset, count) =>
-          _getRemoteAssets(filter: filter, offset: offset, count: count, joinLocal: joinLocal),
+          _getRemoteAssets(filter: filter, offset: offset, count: count, joinLocal: joinLocal, dateField: dateField),
       origin: origin,
     );
   }
@@ -617,6 +619,7 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
   Stream<List<Bucket>> _watchRemoteBucket({
     required Expression<bool> Function($RemoteAssetEntityTable row) filter,
     GroupAssetsBy groupBy = GroupAssetsBy.day,
+    _TimelineDateField dateField = _TimelineDateField.created,
   }) {
     if (groupBy == GroupAssetsBy.none) {
       final query = _db.remoteAssetEntity.count(where: filter);
@@ -624,7 +627,7 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     }
 
     final assetCountExp = _db.remoteAssetEntity.id.count();
-    final dateExp = _db.remoteAssetEntity.effectiveCreatedAt(groupBy);
+    final dateExp = _db.remoteAssetEntity.effectiveDate(groupBy, dateField);
 
     final query = _db.remoteAssetEntity.selectOnly()
       ..addColumns([assetCountExp, dateExp])
@@ -645,7 +648,12 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     required int offset,
     required int count,
     bool joinLocal = false,
+    _TimelineDateField dateField = _TimelineDateField.created,
   }) {
+    // Must match the column the buckets are grouped by, otherwise assets land under the wrong
+    // date header: the timeline pairs buckets with assets purely by offset.
+    final orderExp = dateField.column(_db.remoteAssetEntity);
+
     if (joinLocal) {
       final query =
           _db.remoteAssetEntity.select().join([
@@ -657,7 +665,7 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
             ])
             ..addColumns([_db.localAssetEntity.id])
             ..where(filter(_db.remoteAssetEntity))
-            ..orderBy([OrderingTerm.desc(_db.remoteAssetEntity.createdAt)])
+            ..orderBy([OrderingTerm.desc(orderExp)])
             ..limit(count, offset: offset);
 
       return query
@@ -666,7 +674,7 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     } else {
       final query = _db.remoteAssetEntity.select()
         ..where(filter)
-        ..orderBy([(row) => OrderingTerm.desc(row.createdAt)])
+        ..orderBy([(_) => OrderingTerm.desc(orderExp)])
         ..limit(count, offset: offset);
 
       return query.map((row) => row.toDto()).get();
@@ -699,7 +707,24 @@ extension on Expression<DateTime> {
   }
 }
 
+/// Date an asset is bucketed and ordered by within a timeline.
+enum _TimelineDateField {
+  created,
+  deleted;
+
+  Expression<DateTime> column($RemoteAssetEntityTable table) => switch (this) {
+    _TimelineDateField.created => table.createdAt,
+    _TimelineDateField.deleted => table.deletedAt,
+  };
+}
+
 extension on $RemoteAssetEntityTable {
+  Expression<String> effectiveDate(GroupAssetsBy groupBy, _TimelineDateField dateField) => switch (dateField) {
+    _TimelineDateField.created => effectiveCreatedAt(groupBy),
+    // deletedAt is a plain UTC instant, so it is bucketed by the user's local day like createdAt.
+    _TimelineDateField.deleted => deletedAt.dateFmt(groupBy, toLocal: true),
+  };
+
   Expression<String> effectiveCreatedAt(GroupAssetsBy groupBy) =>
       coalesce([localDateTime.dateFmt(groupBy), createdAt.dateFmt(groupBy, toLocal: true)]);
 }
