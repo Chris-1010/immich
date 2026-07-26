@@ -1,14 +1,31 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuthDto } from 'src/dtos/auth.dto';
 import {
+  CoAppearanceResponseDto,
+  mapCoAppearance,
+  mapRelatedPerson,
+  mapRelationship,
   mapRelationshipType,
+  RelatedPersonResponseDto,
+  RelationshipCreateDto,
+  RelationshipResponseDto,
   RelationshipTypeCreateDto,
   RelationshipTypeResponseDto,
   RelationshipTypeUpdateDto,
   RelationshipTypeUsageResponseDto,
+  RelationshipUpdateDto,
 } from 'src/dtos/relationship.dto';
 import { Permission } from 'src/enum';
+import { canonicalOrder, RelationshipTypePair } from 'src/repositories/relationship.repository';
 import { BaseService } from 'src/services/base.service';
+
+/** The same pair read from the other end, so a mirrored row can be described without a re-read. */
+const invertPair = (type: RelationshipTypePair): RelationshipTypePair => ({
+  id: type.inverseId,
+  name: type.inverseName,
+  inverseId: type.id,
+  inverseName: type.name,
+});
 
 @Injectable()
 export class RelationshipService extends BaseService {
@@ -90,6 +107,134 @@ export class RelationshipService extends BaseService {
     await this.relationshipRepository.deleteTypePair(id);
 
     return usage;
+  }
+
+  /** Everyone a person is related to, grouped, with every label read from that person's end. */
+  async getRelatedPeople(auth: AuthDto, personId: string): Promise<RelatedPersonResponseDto[]> {
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [personId] });
+
+    const people = await this.relationshipRepository.getRelatedPeople(personId);
+
+    return people.map((person) => mapRelatedPerson(person));
+  }
+
+  /** Candidate counterparts, most shared photos first. Ordering only — nothing is filtered out. */
+  async getCoAppearances(auth: AuthDto, personId: string): Promise<CoAppearanceResponseDto[]> {
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [personId] });
+
+    const people = await this.relationshipRepository.getCoAppearances(auth.user.id, personId);
+
+    return people.map((person) => mapCoAppearance(person));
+  }
+
+  /**
+   * Relates two people under one type. Adding a relationship that is already recorded — in either
+   * direction — returns the existing one rather than failing.
+   */
+  async createRelationship(auth: AuthDto, dto: RelationshipCreateDto): Promise<RelationshipResponseDto> {
+    if (dto.subjectId === dto.counterpartId) {
+      throw new BadRequestException('A person cannot be related to themselves');
+    }
+
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [dto.subjectId, dto.counterpartId] });
+    await this.requireAccess({ auth, permission: Permission.RelationshipTypeRead, ids: [dto.typeId] });
+
+    const type = await this.findTypeOrFail(dto.typeId);
+    const { subjectId, counterpartId } = canonicalOrder(type, dto.subjectId, dto.counterpartId);
+
+    const existing = await this.findEquivalent(type, subjectId, counterpartId);
+    if (existing) {
+      return mapRelationship(existing.relationship, existing.type);
+    }
+
+    const created = await this.relationshipRepository.create({
+      ownerId: auth.user.id,
+      subjectId,
+      counterpartId,
+      typeId: type.id,
+    });
+
+    // `create` skips the insert on conflict, so a concurrent add of the same relationship lands here.
+    const relationship =
+      created ?? (await this.relationshipRepository.getRelationshipByKey(subjectId, counterpartId, type.id));
+    if (!relationship) {
+      throw new BadRequestException('Relationship could not be created');
+    }
+
+    return mapRelationship(relationship, type);
+  }
+
+  /**
+   * Relabels a relationship. The new type describes the person opposite `subjectId`, so relabelling
+   * from the far end swaps the stored direction, and a symmetric type is re-canonicalised.
+   */
+  async updateRelationship(auth: AuthDto, id: string, dto: RelationshipUpdateDto): Promise<RelationshipResponseDto> {
+    await this.requireAccess({ auth, permission: Permission.RelationshipUpdate, ids: [id] });
+    await this.requireAccess({ auth, permission: Permission.RelationshipTypeRead, ids: [dto.typeId] });
+
+    const relationship = await this.findRelationshipOrFail(id);
+    if (dto.subjectId !== relationship.subjectId && dto.subjectId !== relationship.counterpartId) {
+      throw new BadRequestException('The subject must be one of the two people in the relationship');
+    }
+
+    const type = await this.findTypeOrFail(dto.typeId);
+    const otherId = dto.subjectId === relationship.subjectId ? relationship.counterpartId : relationship.subjectId;
+    const { subjectId, counterpartId } = canonicalOrder(type, dto.subjectId, otherId);
+
+    if (
+      relationship.typeId === type.id &&
+      relationship.subjectId === subjectId &&
+      relationship.counterpartId === counterpartId
+    ) {
+      return mapRelationship(relationship, type);
+    }
+
+    // The two people may already hold the target type. Relabelling into it would break the unique
+    // constraint, so the row that would become redundant is dropped rather than duplicated.
+    const existing = await this.findEquivalent(type, subjectId, counterpartId);
+    if (existing && existing.relationship.id !== id) {
+      await this.relationshipRepository.remove(existing.relationship.id);
+    }
+
+    await this.relationshipRepository.update(id, { subjectId, counterpartId, typeId: type.id });
+
+    return mapRelationship({ id, subjectId, counterpartId }, type);
+  }
+
+  async deleteRelationship(auth: AuthDto, id: string): Promise<void> {
+    await this.requireAccess({ auth, permission: Permission.RelationshipDelete, ids: [id] });
+
+    await this.relationshipRepository.remove(id);
+  }
+
+  /**
+   * The row already stating this fact, if there is one. An asymmetric fact can be stored from
+   * either end — "Bob is Alice's parent" and "Alice is Bob's child" are one relationship — so the
+   * mirrored row counts as the same relationship and is returned described from its own end.
+   */
+  private async findEquivalent(type: RelationshipTypePair, subjectId: string, counterpartId: string) {
+    const direct = await this.relationshipRepository.getRelationshipByKey(subjectId, counterpartId, type.id);
+    if (direct) {
+      return { relationship: direct, type };
+    }
+
+    if (type.id === type.inverseId) {
+      return;
+    }
+
+    const mirrored = await this.relationshipRepository.getRelationshipByKey(counterpartId, subjectId, type.inverseId);
+    if (mirrored) {
+      return { relationship: mirrored, type: invertPair(type) };
+    }
+  }
+
+  private async findRelationshipOrFail(id: string) {
+    const relationship = await this.relationshipRepository.getRelationship(id);
+    if (!relationship) {
+      throw new BadRequestException('Relationship not found');
+    }
+
+    return relationship;
   }
 
   private async countUsage(id: string): Promise<RelationshipTypeUsageResponseDto> {

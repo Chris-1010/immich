@@ -192,6 +192,11 @@ export enum Permission {
   PluginUpdate = 'plugin.update',
   PluginDelete = 'plugin.delete',
 
+  RelationshipCreate = 'relationship.create',
+  RelationshipRead = 'relationship.read',
+  RelationshipUpdate = 'relationship.update',
+  RelationshipDelete = 'relationship.delete',
+
   RelationshipTypeCreate = 'relationshipType.create',
   RelationshipTypeRead = 'relationshipType.read',
   RelationshipTypeUpdate = 'relationshipType.update',

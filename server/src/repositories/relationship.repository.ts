@@ -187,6 +187,18 @@ export class RelationshipRepository {
       .executeTakeFirst();
   }
 
+  /** Looks a relationship up by its natural key, so a duplicate add can return the existing row. */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, DummyValue.UUID] })
+  getRelationshipByKey(subjectId: string, counterpartId: string, typeId: string) {
+    return this.db
+      .selectFrom('person_relationship')
+      .selectAll('person_relationship')
+      .where('subjectId', '=', subjectId)
+      .where('counterpartId', '=', counterpartId)
+      .where('typeId', '=', typeId)
+      .executeTakeFirst();
+  }
+
   /**
    * Adding a relationship that already exists is a no-op: the insert is skipped and nothing is
    * returned. Callers must canonicalise the direction with {@link canonicalOrder} first,
