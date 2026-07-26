@@ -442,6 +442,26 @@ class PartnerAccess {
   }
 }
 
+class RelationshipTypeAccess {
+  constructor(private db: Kysely<DB>) {}
+
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
+  @ChunkedSet({ paramIndex: 1 })
+  async checkOwnerAccess(userId: string, typeIds: Set<string>) {
+    if (typeIds.size === 0) {
+      return new Set<string>();
+    }
+
+    return this.db
+      .selectFrom('relationship_type')
+      .select('relationship_type.id')
+      .where('relationship_type.id', 'in', [...typeIds])
+      .where('relationship_type.ownerId', '=', userId)
+      .execute()
+      .then((types) => new Set(types.map((type) => type.id)));
+  }
+}
+
 class TagAccess {
   constructor(private db: Kysely<DB>) {}
 
@@ -492,6 +512,7 @@ export class AccessRepository {
   notification: NotificationAccess;
   person: PersonAccess;
   partner: PartnerAccess;
+  relationshipType: RelationshipTypeAccess;
   session: SessionAccess;
   stack: StackAccess;
   tag: TagAccess;
@@ -507,6 +528,7 @@ export class AccessRepository {
     this.notification = new NotificationAccess(db);
     this.person = new PersonAccess(db);
     this.partner = new PartnerAccess(db);
+    this.relationshipType = new RelationshipTypeAccess(db);
     this.session = new SessionAccess(db);
     this.stack = new StackAccess(db);
     this.tag = new TagAccess(db);

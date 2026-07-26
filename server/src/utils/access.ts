@@ -279,6 +279,12 @@ const checkOtherAccess = async (access: AccessRepository, request: OtherAccessRe
       return await access.partner.checkUpdateAccess(auth.user.id, ids);
     }
 
+    case Permission.RelationshipTypeRead:
+    case Permission.RelationshipTypeUpdate:
+    case Permission.RelationshipTypeDelete: {
+      return access.relationshipType.checkOwnerAccess(auth.user.id, ids);
+    }
+
     case Permission.SessionRead:
     case Permission.SessionUpdate:
     case Permission.SessionDelete:
