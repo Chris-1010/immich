@@ -31,7 +31,7 @@
   let selectedOption = $derived(getPreferredTimeZone(initialDate, initialTimeZone, timezones, lastSelectedTimezone));
 
   const handleConfirm = async () => {
-    const ids = getOwnedAssetsWithWarning(assets, $user);
+    const ids = await getOwnedAssetsWithWarning(assets, $user);
     try {
       if (showRelative && (selectedDuration || selectedOption)) {
         await updateAssets({

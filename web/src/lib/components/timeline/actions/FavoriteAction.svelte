@@ -2,6 +2,7 @@
   import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import type { OnFavorite } from '$lib/utils/actions';
+  import { getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { updateAssets } from '@immich/sdk';
   import { IconButton, toastManager } from '@immich/ui';
@@ -30,7 +31,7 @@
     try {
       const assets = [...getOwnedAssets()].filter((asset) => asset.isFavorite !== isFavorite);
 
-      const ids = assets.map(({ id }) => id);
+      const ids = await getAssetIdsWithStackChildren(assets);
 
       if (ids.length > 0) {
         await updateAssets({ assetBulkUpdateDto: { ids, isFavorite } });

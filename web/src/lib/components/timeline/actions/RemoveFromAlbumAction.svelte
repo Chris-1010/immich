@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
+  import { getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { getAlbumInfo, removeAssetFromAlbum, type AlbumResponseDto } from '@immich/sdk';
   import { IconButton, modalManager, toastManager } from '@immich/ui';
@@ -27,7 +28,7 @@
     }
 
     try {
-      const ids = [...getAssets()].map((a) => a.id);
+      const ids = await getAssetIdsWithStackChildren(getAssets());
       const results = await removeAssetFromAlbum({
         id: album.id,
         bulkIdsDto: { ids },

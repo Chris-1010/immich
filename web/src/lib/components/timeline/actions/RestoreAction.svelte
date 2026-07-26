@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import type { OnRestore } from '$lib/utils/actions';
+  import { getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { restoreAssets } from '@immich/sdk';
   import { Button, toastManager } from '@immich/ui';
@@ -21,7 +22,7 @@
     loading = true;
 
     try {
-      const ids = [...getAssets()].map((a) => a.id);
+      const ids = await getAssetIdsWithStackChildren(getAssets());
       await restoreAssets({ bulkIdsDto: { ids } });
       onRestore?.(ids);
       toastManager.success($t('assets_restored_count', { values: { count: ids.length } }));

@@ -3,7 +3,7 @@
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import AlbumPickerModal from '$lib/modals/AlbumPickerModal.svelte';
   import type { OnAddToAlbum } from '$lib/utils/actions';
-  import { addAssetsToAlbum, addAssetsToAlbums } from '$lib/utils/asset-utils';
+  import { addAssetsToAlbum, addAssetsToAlbums, getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { modalManager } from '@immich/ui';
   import { mdiImageAlbum, mdiShareVariantOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -23,7 +23,7 @@
       return;
     }
 
-    const assetIds = [...getAssets()].map(({ id }) => id);
+    const assetIds = await getAssetIdsWithStackChildren(getAssets());
     if (albums.length === 1) {
       const album = albums[0];
       await addAssetsToAlbum(album.id, assetIds);

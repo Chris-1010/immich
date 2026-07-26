@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import { handleRemoveSharedLinkAssets } from '$lib/services/shared-link.service';
+  import { getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { type SharedLinkResponseDto } from '@immich/sdk';
   import { IconButton } from '@immich/ui';
   import { mdiDeleteOutline } from '@mdi/js';
@@ -15,7 +16,7 @@
   const { getAssets, clearSelect } = getAssetControlContext();
 
   const handleSelect = async () => {
-    const assetIds = getAssets().map(({ id }) => id);
+    const assetIds = await getAssetIdsWithStackChildren(getAssets());
     const success = await handleRemoveSharedLinkAssets(sharedLink, assetIds);
     if (success) {
       clearSelect();

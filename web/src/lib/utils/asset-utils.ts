@@ -381,15 +381,51 @@ export const getAssetType = (type: AssetTypeEnum) => {
   }
 };
 
-export const getOwnedAssetsWithWarning = (assets: TimelineAsset[], user: UserResponseDto | null): string[] => {
-  const ids = [...assets].filter((a) => user && a.ownerId === user.id).map((a) => a.id);
+/**
+ * Expands a selection of timeline assets to the ids of every underlying asset,
+ * including the children of any collapsed stacks. On the timeline a stack is shown
+ * as a single (primary) asset, so a bulk action driven by the selection alone would
+ * only affect that primary. Each selected stack is fetched and its children merged
+ * in. The result is deduplicated and preserves the selected assets ahead of any
+ * children pulled in from their stacks.
+ */
+export const getAssetIdsWithStackChildren = async (
+  assets: readonly { id: string; stack?: { id: string; assetCount: number } | null }[],
+): Promise<string[]> => {
+  const ids = new Set<string>();
+  const stackIds = new Set<string>();
+
+  for (const asset of assets) {
+    ids.add(asset.id);
+    if (asset.stack && asset.stack.assetCount > 1) {
+      stackIds.add(asset.stack.id);
+    }
+  }
+
+  if (stackIds.size > 0) {
+    const stacks = await Promise.all([...stackIds].map((id) => getStack({ id })));
+    for (const stack of stacks) {
+      for (const child of stack.assets) {
+        ids.add(child.id);
+      }
+    }
+  }
+
+  return [...ids];
+};
+
+export const getOwnedAssetsWithWarning = async (
+  assets: TimelineAsset[],
+  user: UserResponseDto | null,
+): Promise<string[]> => {
+  const owned = [...assets].filter((a) => user && a.ownerId === user.id);
 
   const numberOfIssues = [...assets].filter((a) => user && a.ownerId !== user.id).length;
   if (numberOfIssues > 0) {
     const $t = get(t);
     toastManager.warning($t('errors.cant_change_metadata_assets_count', { values: { count: numberOfIssues } }));
   }
-  return ids;
+  return getAssetIdsWithStackChildren(owned);
 };
 
 export type StackResponse = {
@@ -527,8 +563,8 @@ export const toggleArchive = async (asset: AssetResponseDto) => {
   return asset;
 };
 
-export const archiveAssets = async (assets: { id: string }[], visibility: AssetVisibility) => {
-  const ids = assets.map(({ id }) => id);
+export const archiveAssets = async (assets: TimelineAsset[], visibility: AssetVisibility) => {
+  const ids = await getAssetIdsWithStackChildren(assets);
   const $t = get(t);
 
   try {

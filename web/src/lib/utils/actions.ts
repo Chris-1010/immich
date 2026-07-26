@@ -1,7 +1,7 @@
 import ToastAction from '$lib/components/ToastAction.svelte';
 import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
 import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
-import type { StackResponse } from '$lib/utils/asset-utils';
+import { getAssetIdsWithStackChildren, type StackResponse } from '$lib/utils/asset-utils';
 import { AssetVisibility, deleteAssets as deleteBulk, restoreAssets } from '@immich/sdk';
 import { toastManager } from '@immich/ui';
 import { t } from 'svelte-i18n';
@@ -28,7 +28,7 @@ export const deleteAssets = async (
 ) => {
   const $t = get(t);
   try {
-    const ids = assets.map((a) => a.id);
+    const ids = await getAssetIdsWithStackChildren(assets);
     await deleteBulk({ assetBulkDeleteDto: { ids, force } });
     onAssetDelete(ids);
 
@@ -46,7 +46,7 @@ export const deleteAssets = async (
               ? {
                   color: 'secondary',
                   text: $t('undo'),
-                  onClick: () => undoDeleteAssets(onUndoDelete, assets),
+                  onClick: () => undoDeleteAssets(onUndoDelete, assets, ids),
                 }
               : undefined,
         },
@@ -58,11 +58,12 @@ export const deleteAssets = async (
   }
 };
 
-const undoDeleteAssets = async (onUndoDelete: OnUndoDelete, assets: TimelineAsset[]) => {
+const undoDeleteAssets = async (onUndoDelete: OnUndoDelete, assets: TimelineAsset[], ids?: string[]) => {
   const $t = get(t);
   try {
-    const ids = assets.map((a) => a.id);
-    await restoreAssets({ bulkIdsDto: { ids } });
+    // Restore every deleted asset (including stacked children); only the selected
+    // assets are re-added to the timeline since the children are hidden in the stack.
+    await restoreAssets({ bulkIdsDto: { ids: ids ?? assets.map((a) => a.id) } });
     onUndoDelete?.(assets);
   } catch (error) {
     handleError(error, $t('errors.unable_to_restore_assets'));

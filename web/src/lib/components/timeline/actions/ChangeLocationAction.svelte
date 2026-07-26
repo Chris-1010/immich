@@ -25,7 +25,7 @@
       return;
     }
 
-    const ids = getOwnedAssetsWithWarning(getOwnedAssets(), $user);
+    const ids = await getOwnedAssetsWithWarning(getOwnedAssets(), $user);
     const assetBulkUpdateDto: AssetBulkUpdateDto =
       result.type === 'coordinates'
         ? { ids, latitude: result.point.lat, longitude: result.point.lng }

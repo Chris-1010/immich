@@ -20,7 +20,7 @@
   const handleUpdateDescription = async () => {
     const description = await modalManager.show(AssetUpdateDescriptionConfirmModal);
     if (description) {
-      const ids = getOwnedAssetsWithWarning(getOwnedAssets(), $user);
+      const ids = await getOwnedAssetsWithWarning(getOwnedAssets(), $user);
 
       try {
         await updateAssets({ assetBulkUpdateDto: { ids, description } });

@@ -2,6 +2,7 @@
   import { getAssetControlContext } from '$lib/components/timeline/AssetSelectControlBar.svelte';
   import MenuOption from '$lib/components/shared-components/context-menu/menu-option.svelte';
   import type { OnSetVisibility } from '$lib/utils/actions';
+  import { getAssetIdsWithStackChildren } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { AssetVisibility, updateAssets } from '@immich/sdk';
   import { Button, modalManager } from '@immich/ui';
@@ -33,7 +34,7 @@
 
     try {
       loading = true;
-      const assetIds = getAssets().map(({ id }) => id);
+      const assetIds = await getAssetIdsWithStackChildren(getAssets());
 
       await updateAssets({
         assetBulkUpdateDto: {
