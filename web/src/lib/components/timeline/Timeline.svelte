@@ -773,7 +773,12 @@
       {/if}
     </section>
 
-    {#each timelineManager.months as monthGroup (monthGroup.viewId)}
+    <!--
+      Keyed by the month group itself rather than its year-month: a filter or sort change replaces
+      every month group with a fresh instance, and reusing blocks across that rebuild leaves the
+      months that appear in both timelines rendering nothing at all.
+    -->
+    {#each timelineManager.months as monthGroup (monthGroup)}
       {@const display = monthGroup.intersecting}
       {@const absoluteHeight = monthGroup.top}
 
