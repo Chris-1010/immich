@@ -49,7 +49,7 @@ export class TimeBucketDto {
   @ValidateEnum({
     enum: TimeBucketField,
     name: 'TimeBucketField',
-    description: 'Field to group and sort time buckets by (dateTaken or dateAdded)',
+    description: 'Field to group and sort time buckets by (dateTaken, dateAdded or dateDeleted)',
     optional: true,
   })
   timeBucketField?: TimeBucketField;

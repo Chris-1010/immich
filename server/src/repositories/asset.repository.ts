@@ -5,7 +5,15 @@ import { InjectKysely } from 'nestjs-kysely';
 import { lockableProperties, LockableProperty, Stack } from 'src/database';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFileType, AssetMetadataKey, AssetOrder, AssetStatus, AssetType, AssetVisibility, TimeBucketField } from 'src/enum';
+import {
+  AssetFileType,
+  AssetMetadataKey,
+  AssetOrder,
+  AssetStatus,
+  AssetType,
+  AssetVisibility,
+  TimeBucketField,
+} from 'src/enum';
 import { DB } from 'src/schema';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
 import { AssetFileTable } from 'src/schema/tables/asset-file.table';
@@ -18,6 +26,7 @@ import {
   removeUndefinedKeys,
   truncatedCreatedAt,
   truncatedDate,
+  truncatedDeletedAt,
   unnest,
   withDefaultVisibility,
   withExif,
@@ -118,6 +127,53 @@ interface GetByIdsRelations {
 
 const distinctLocked = <T extends LockableProperty[] | null>(eb: ExpressionBuilder<DB, 'asset_exif'>, columns: T) =>
   sql<T>`nullif(array(select distinct unnest(${eb.ref('asset_exif.lockedProperties')} || ${columns})), '{}')`;
+
+/** Asset column the time buckets are grouped and ordered by. Defaults to the date taken. */
+const timeBucketColumn = (field?: TimeBucketField) => {
+  switch (field) {
+    case TimeBucketField.DateAdded: {
+      return 'asset.createdAt' as const;
+    }
+    case TimeBucketField.DateDeleted: {
+      return 'asset.deletedAt' as const;
+    }
+    default: {
+      return 'asset.fileCreatedAt' as const;
+    }
+  }
+};
+
+/** The same column as a UTC timestamp, returned to the client as `fileCreatedAt`. */
+const timeBucketDate = (field?: TimeBucketField) => {
+  switch (field) {
+    case TimeBucketField.DateAdded: {
+      return sql`asset."createdAt" at time zone 'utc'`;
+    }
+    case TimeBucketField.DateDeleted: {
+      return sql`asset."deletedAt" at time zone 'utc'`;
+    }
+    default: {
+      return sql`asset."fileCreatedAt" at time zone 'utc'`;
+    }
+  }
+};
+
+const truncatedTimeBucket = <O>(field?: TimeBucketField) => {
+  switch (field) {
+    case TimeBucketField.DateAdded: {
+      return truncatedCreatedAt<O>();
+    }
+    case TimeBucketField.DateDeleted: {
+      return truncatedDeletedAt<O>();
+    }
+    default: {
+      return truncatedDate<O>();
+    }
+  }
+};
+
+// Only the date taken carries a local time offset; the other fields are plain UTC timestamps.
+const hasLocalOffset = (field?: TimeBucketField) => field === undefined || field === TimeBucketField.DateTaken;
 
 @Injectable()
 export class AssetRepository {
@@ -632,8 +688,9 @@ export class AssetRepository {
       .with('asset', (qb) =>
         qb
           .selectFrom('asset')
-          .select(
-            (options.timeBucketField === TimeBucketField.DateAdded ? truncatedCreatedAt<Date>() : truncatedDate<Date>()).as('timeBucket'),
+          .select(truncatedTimeBucket<Date>(options.timeBucketField).as('timeBucket'))
+          .$if(options.timeBucketField === TimeBucketField.DateDeleted, (qb) =>
+            qb.where('asset.deletedAt', 'is not', null),
           )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
@@ -691,16 +748,13 @@ export class AssetRepository {
             sql`asset.type = 'IMAGE'`.as('isImage'),
             sql`asset."deletedAt" is not null`.as('isTrashed'),
             'asset.livePhotoVideoId',
-            (options.timeBucketField === TimeBucketField.DateAdded
-              ? sql`0`
-              : sql`extract(epoch from (asset."localDateTime" AT TIME ZONE 'UTC' - asset."fileCreatedAt" at time zone 'UTC'))::real / 3600`
+            (hasLocalOffset(options.timeBucketField)
+              ? sql`extract(epoch from (asset."localDateTime" AT TIME ZONE 'UTC' - asset."fileCreatedAt" at time zone 'UTC'))::real / 3600`
+              : sql`0`
             ).as('localOffsetHours'),
             'asset.ownerId',
             'asset.status',
-            (options.timeBucketField === TimeBucketField.DateAdded
-              ? sql`asset."createdAt" at time zone 'utc'`
-              : sql`asset."fileCreatedAt" at time zone 'utc'`
-            ).as('fileCreatedAt'),
+            timeBucketDate(options.timeBucketField).as('fileCreatedAt'),
             eb.fn('encode', ['asset.thumbhash', sql.lit('base64')]).as('thumbhash'),
             'asset_exif.city',
             'asset_exif.country',
@@ -725,11 +779,7 @@ export class AssetRepository {
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(options.visibility == undefined, withDefaultVisibility)
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
-          .where(
-            options.timeBucketField === TimeBucketField.DateAdded ? truncatedCreatedAt() : truncatedDate(),
-            '=',
-            timeBucket.replace(/^[+-]/, ''),
-          )
+          .where(truncatedTimeBucket(options.timeBucketField), '=', timeBucket.replace(/^[+-]/, ''))
           .$if(!!options.albumId, (qb) =>
             qb.where((eb) =>
               eb.exists(
@@ -778,10 +828,7 @@ export class AssetRepository {
           .$if(!!options.withoutCoordinates, (qb) =>
             qb.where('asset_exif.latitude', 'is', null).where('asset_exif.noLocation', '=', false),
           )
-          .orderBy(
-            options.timeBucketField === TimeBucketField.DateAdded ? 'asset.createdAt' : 'asset.fileCreatedAt',
-            options.order ?? 'desc',
-          ),
+          .orderBy(timeBucketColumn(options.timeBucketField), options.order ?? 'desc'),
       )
       .with('agg', (qb) =>
         qb

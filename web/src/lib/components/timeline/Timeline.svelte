@@ -235,9 +235,19 @@
   };
 
   // Resolve the year/month bucket an asset falls into for the active sort field. Date added is
-  // bucketed by the asset's createdAt; date taken by its localDateTime (both truncated in UTC).
-  const assetYearMonth = (asset: { createdAt: string; localDateTime: string }, sortField: TimeBucketField) => {
-    const value = sortField === TimeBucketField.DateAdded ? asset.createdAt : asset.localDateTime;
+  // bucketed by the asset's createdAt, date deleted by its deletedAt, and date taken by its
+  // localDateTime (all truncated in UTC).
+  const assetYearMonth = (
+    asset: { createdAt: string; localDateTime: string; deletedAt: string | null },
+    sortField: TimeBucketField,
+  ) => {
+    let value = asset.localDateTime;
+    if (sortField === TimeBucketField.DateAdded) {
+      value = asset.createdAt;
+    } else if (sortField === TimeBucketField.DateDeleted) {
+      // A restored asset has no deleted date and won't appear in the trash timeline at all.
+      value = asset.deletedAt ?? asset.localDateTime;
+    }
     const dateTime = DateTime.fromISO(value, { zone: 'utc' });
     return { year: dateTime.year, month: dateTime.month };
   };

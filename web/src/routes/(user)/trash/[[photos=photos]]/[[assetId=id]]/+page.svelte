@@ -13,11 +13,12 @@
   import { serverConfigManager } from '$lib/managers/server-config-manager.svelte';
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
+  import { trashSortField } from '$lib/stores/preferences.store';
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { emptyTrash, restoreTrash } from '@immich/sdk';
+  import { emptyTrash, restoreTrash, TimeBucketField } from '@immich/sdk';
   import { Button, HStack, modalManager, Text, toastManager } from '@immich/ui';
-  import { mdiDeleteForeverOutline, mdiHistory } from '@mdi/js';
+  import { mdiCalendar, mdiDeleteClockOutline, mdiDeleteForeverOutline, mdiHistory } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -28,9 +29,18 @@
   let { data }: Props = $props();
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
-  const options = { isTrashed: true };
+  let options = $derived({ isTrashed: true, timeBucketField: $trashSortField });
 
   const assetInteraction = new AssetInteraction();
+
+  const toggleSortField = () => {
+    const next =
+      $trashSortField === TimeBucketField.DateDeleted ? TimeBucketField.DateTaken : TimeBucketField.DateDeleted;
+    // Always register intent: with a selection the grid follows it across the reload, otherwise it
+    // resets to the top (which also avoids a blank grid when the new sort is much shorter).
+    timelineManager.requestScrollToSelection(assetInteraction.selectedAssets, next);
+    $trashSortField = next;
+  };
 
   if (!featureFlagsManager.value.trash) {
     handlePromiseError(goto(AppRoute.PHOTOS));
@@ -81,6 +91,17 @@
   <UserPageLayout hideNavbar={assetInteraction.selectionActive} title={data.meta.title} scrollbar={false}>
     {#snippet buttons()}
       <HStack gap={0}>
+        <Button
+          size="small"
+          color={$trashSortField === TimeBucketField.DateDeleted ? 'primary' : 'secondary'}
+          variant={$trashSortField === TimeBucketField.DateDeleted ? 'filled' : 'ghost'}
+          leadingIcon={$trashSortField === TimeBucketField.DateDeleted ? mdiDeleteClockOutline : mdiCalendar}
+          onclick={toggleSortField}
+        >
+          <Text class="hidden md:block">
+            {$trashSortField === TimeBucketField.DateDeleted ? $t('sort_by_date_deleted') : $t('sort_by_date_taken')}
+          </Text>
+        </Button>
         <Button
           leadingIcon={mdiHistory}
           onclick={handleRestoreTrash}

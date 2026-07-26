@@ -64,6 +64,9 @@ export const isShowDetail = persisted<boolean>('info-opened', false, {});
 
 export const timelineSortField = persisted<TimeBucketField>('timeline-sort-field', TimeBucketField.DateTaken);
 
+// The trash page keeps its own sort field, defaulting to the date the assets were deleted.
+export const trashSortField = persisted<TimeBucketField>('trash-sort-field', TimeBucketField.DateDeleted);
+
 export interface AlbumViewSettings {
   view: string;
   filter: string;

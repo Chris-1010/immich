@@ -298,6 +298,10 @@ export function truncatedCreatedAt<O>() {
   return sql<O>`date_trunc(${sql.lit('MONTH')}, asset."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
 }
 
+export function truncatedDeletedAt<O>() {
+  return sql<O>`date_trunc(${sql.lit('MONTH')}, asset."deletedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+}
+
 export function withTagId<O>(qb: SelectQueryBuilder<DB, 'asset', O>, tagId: string) {
   return qb.where((eb) =>
     eb.exists(

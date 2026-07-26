@@ -79,6 +79,14 @@ export class AssetResponseDto extends SanitizedAssetResponseDto {
   isFavorite!: boolean;
   isArchived!: boolean;
   isTrashed!: boolean;
+  @ApiProperty({
+    type: 'string',
+    format: 'date-time',
+    nullable: true,
+    description: 'The UTC timestamp when the asset was moved to the trash, or null when it is not trashed.',
+    example: '2024-01-16T12:45:30.000Z',
+  })
+  deletedAt!: Date | null;
   isOffline!: boolean;
   @ValidateEnum({ enum: AssetVisibility, name: 'AssetVisibility' })
   visibility!: AssetVisibility;
@@ -214,6 +222,7 @@ export function mapAsset(entity: MapAsset, options: AssetMapOptions = {}): Asset
     isFavorite: options.auth?.user.id === entity.ownerId && entity.isFavorite,
     isArchived: entity.visibility === AssetVisibility.Archive,
     isTrashed: !!entity.deletedAt,
+    deletedAt: entity.deletedAt,
     visibility: entity.visibility,
     duration: entity.duration ?? '0:00:00.00000',
     exifInfo: entity.exifInfo ? mapExif(entity.exifInfo) : undefined,

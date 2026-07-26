@@ -69,6 +69,7 @@ const assetResponse: AssetResponseDto = {
   people: [],
   checksum: 'ZmlsZSBoYXNo',
   isTrashed: false,
+  deletedAt: null,
   libraryId: 'library-id',
   hasMetadata: true,
   visibility: AssetVisibility.Timeline,

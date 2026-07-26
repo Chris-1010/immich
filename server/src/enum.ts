@@ -60,6 +60,7 @@ export enum AssetOrder {
 export enum TimeBucketField {
   DateTaken = 'dateTaken',
   DateAdded = 'dateAdded',
+  DateDeleted = 'dateDeleted',
 }
 
 export enum DatabaseAction {

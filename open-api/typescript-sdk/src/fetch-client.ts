@@ -340,6 +340,8 @@ export type AssetResponseDto = {
     checksum: string;
     /** The UTC timestamp when the asset was originally uploaded to Immich. */
     createdAt: string;
+    /** The UTC timestamp when the asset was moved to the trash, or null when it is not trashed. */
+    deletedAt: string | null;
     deviceAssetId: string;
     deviceId: string;
     duplicateId?: string | null;
@@ -5180,7 +5182,8 @@ export enum AssetOrder {
 }
 export enum TimeBucketField {
     DateTaken = "dateTaken",
-    DateAdded = "dateAdded"
+    DateAdded = "dateAdded",
+    DateDeleted = "dateDeleted"
 }
 export enum AssetVisibility {
     Archive = "archive",
