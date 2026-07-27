@@ -69,7 +69,8 @@
   </div>
 
   <div class="px-4 pt-4">
-    <SearchBar placeholder={$t('search_people')} bind:name={searchName} showLoadingSpinner={false} />
+    <!-- The panel only opens because someone asked for it, so typing is what they came to do. -->
+    <SearchBar placeholder={$t('search_people')} bind:name={searchName} showLoadingSpinner={false} focusOnMount />
   </div>
 
   <div class="px-4 py-4 text-sm">

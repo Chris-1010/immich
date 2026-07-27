@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { shortcuts } from '$lib/actions/shortcut';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import { getPersonPageContext } from '$lib/components/faces-page/person-page-context';
   import PersonPickerSidePanel from '$lib/components/relationships/person-picker-side-panel.svelte';
@@ -67,6 +68,17 @@
   const closeFlow = () => (flow = undefined);
 
   const handleAddRelationship = () => (flow = { step: 'person' });
+
+  // "+" is the same act as the button it shadows, so it does nothing while a picker is already
+  // open. Both spellings are bound: the key is shifted on some layouts and bare on a numpad.
+  const addRelationshipShortcuts = [{ key: '+' }, { key: '+', shift: true }].map((shortcut) => ({
+    shortcut,
+    onShortcut: () => {
+      if (!flow) {
+        handleAddRelationship();
+      }
+    },
+  }));
 
   const handleAddLabel = (relatedPerson: RelatedPersonResponseDto) =>
     (flow = { step: 'type', target: { kind: 'add', counterpartId: relatedPerson.id }, hasPersonStep: false });
@@ -261,6 +273,8 @@
     }
   };
 </script>
+
+<svelte:document use:shortcuts={addRelationshipShortcuts} />
 
 <!-- The app bar is positioned against the viewport, so it is rendered outside the person page container. -->
 <Portal target="body">

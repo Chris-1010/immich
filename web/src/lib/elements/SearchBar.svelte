@@ -2,6 +2,7 @@
   import type { SearchOptions } from '$lib/utils/dipatch';
   import { IconButton, LoadingSpinner } from '@immich/ui';
   import { mdiClose, mdiMagnify } from '@mdi/js';
+  import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
   interface Props {
@@ -9,6 +10,8 @@
     roundedBottom?: boolean;
     showLoadingSpinner: boolean;
     placeholder: string;
+    /** Takes the caret as soon as the bar appears, for a bar that opens in response to a deliberate act. */
+    focusOnMount?: boolean;
     onSearch?: (options: SearchOptions) => void;
     onReset?: () => void;
   }
@@ -18,11 +21,18 @@
     roundedBottom = true,
     showLoadingSpinner,
     placeholder,
+    focusOnMount = false,
     onSearch = () => {},
     onReset = () => {},
   }: Props = $props();
 
   let inputRef = $state<HTMLElement>();
+
+  onMount(() => {
+    if (focusOnMount) {
+      inputRef?.focus();
+    }
+  });
 
   const resetSearch = () => {
     name = '';
