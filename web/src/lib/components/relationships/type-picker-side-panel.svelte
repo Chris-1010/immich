@@ -4,6 +4,7 @@
   import RelationshipTypeModal from '$lib/modals/RelationshipTypeModal.svelte';
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { idsInRange } from '$lib/utils/range-select';
   import { getRelationshipTypes, type RelationshipTypeResponseDto } from '@immich/sdk';
   import { Button, Icon, IconButton, LoadingSpinner, modalManager } from '@immich/ui';
   import { mdiArrowLeftThin, mdiCheck, mdiClose, mdiPencilOutline, mdiPlus } from '@mdi/js';
@@ -31,7 +32,7 @@
     onClose: () => void;
     /** Shown as a separate control when closing this panel goes back a step rather than ending the flow. */
     onCancel?: () => void;
-    /** Every type chosen. A plain click hands over one; ctrl-clicking gathers several. */
+    /** Every type chosen. A plain click hands over one; ctrl- and shift-clicking gather several. */
     onSelect: (types: RelationshipTypeResponseDto[]) => void;
   }
 
@@ -57,20 +58,31 @@
   let searchName = $state('');
   let gatheredIds = $state<string[]>([]);
 
+  /** The last label ticked on its own, which is the end a shift-click draws its range from. */
+  let anchorId = $state<string>();
+
   // Read back from the list so the types are handed over in the order they are shown in.
   let gatheredTypes = $derived(types.filter((type) => gatheredIds.includes(type.id)));
 
   const handleClick = (event: MouseEvent, type: RelationshipTypeResponseDto) => {
-    // Ctrl — or Cmd — applies several labels to the same people in one go, which is how someone
-    // ends up both a brother and a housemate.
-    if (allowMultiple && (event.ctrlKey || event.metaKey)) {
-      gatheredIds = gatheredIds.includes(type.id)
-        ? gatheredIds.filter((id) => id !== type.id)
-        : [...gatheredIds, type.id];
+    if (!allowMultiple || !(event.ctrlKey || event.metaKey || event.shiftKey)) {
+      onSelect([type]);
       return;
     }
 
-    onSelect([type]);
+    // Shift takes everything from the last label ticked to this one, across the suggested group and
+    // the rest as one list, since that is the single list on screen.
+    if (event.shiftKey && anchorId) {
+      gatheredIds = [...new Set([...gatheredIds, ...idsInRange(orderedTypes, anchorId, type.id)])];
+      return;
+    }
+
+    // Ctrl — or Cmd — applies several labels to the same people in one go, which is how someone
+    // ends up both a brother and a housemate.
+    gatheredIds = gatheredIds.includes(type.id)
+      ? gatheredIds.filter((id) => id !== type.id)
+      : [...gatheredIds, type.id];
+    anchorId = type.id;
   };
 
   const matchesSearch = (type: RelationshipTypeResponseDto, search: string) => {
@@ -88,6 +100,9 @@
   // only has to keep that order and draw the line between the two groups.
   let suggestedTypes = $derived(matchingTypes.filter((type) => type.suggested));
   let otherTypes = $derived(matchingTypes.filter((type) => !type.suggested));
+
+  /** The two groups as the one list they read as on screen, which is what a range runs along. */
+  let orderedTypes = $derived([...suggestedTypes, ...otherTypes]);
 
   const loadTypes = async () => {
     const timeout = setTimeout(() => (isLoadingTypes = true), timeBeforeShowLoadingSpinner);
@@ -203,7 +218,7 @@
 </section>
 
 {#snippet typeList(entries: RelationshipTypeResponseDto[])}
-  <ul class="flex flex-col gap-1">
+  <ul class="flex flex-col gap-1 select-none">
     {#each entries as type (type.id)}
       <li
         class="flex place-items-center gap-1 rounded-lg hover:bg-subtle {type.id === selectedTypeId

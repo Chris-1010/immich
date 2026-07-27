@@ -5,6 +5,7 @@
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { genderRingClass } from '$lib/utils/person-gender';
+  import { idsInRange } from '$lib/utils/range-select';
   import { getCoAppearances, type CoAppearanceResponseDto } from '@immich/sdk';
   import { Button, Icon, IconButton, LoadingSpinner } from '@immich/ui';
   import { mdiArrowLeftThin, mdiCheck } from '@mdi/js';
@@ -16,7 +17,7 @@
   interface Props {
     subjectId: string;
     onClose: () => void;
-    /** Everyone chosen at once. A plain click hands over one person; ctrl-clicking gathers several. */
+    /** Everyone chosen at once. A plain click hands over one person; ctrl- and shift-clicking gather several. */
     onSelect: (people: CoAppearanceResponseDto[]) => void;
   }
 
@@ -27,17 +28,29 @@
   let searchName = $state('');
   let selectedIds = $state<string[]>([]);
 
+  /** The last person ticked on their own, which is the end a shift-click draws its range from. */
+  let anchorId = $state<string>();
+
   // Read back from the list so the people handed over are in the order they are shown in, not the
   // order they happened to be ticked in.
   let selectedPeople = $derived(people.filter((person) => selectedIds.includes(person.id)));
 
   const handleClick = (event: MouseEvent, person: CoAppearanceResponseDto) => {
+    // Shift takes everyone from the last one ticked to this one, over the list as it stands, so a
+    // search narrows what a range can reach. The anchor stays put afterwards, so the same range can
+    // be redrawn shorter or longer without starting again.
+    if (event.shiftKey && anchorId) {
+      selectedIds = [...new Set([...selectedIds, ...idsInRange(matchingPeople, anchorId, person.id)])];
+      return;
+    }
+
     // Ctrl — or Cmd — gathers people up for one trip through the type step. A plain click stays the
     // single-person shortcut it has always been, and starts over from whoever it landed on.
-    if (event.ctrlKey || event.metaKey) {
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
       selectedIds = selectedIds.includes(person.id)
         ? selectedIds.filter((id) => id !== person.id)
         : [...selectedIds, person.id];
+      anchorId = person.id;
       return;
     }
 
@@ -113,7 +126,7 @@
     {:else if matchingPeople.length === 0}
       <p class="mt-4 text-center">{$t('no_people_found')}</p>
     {:else}
-      <div class="immich-scrollbar mt-4 flex flex-wrap gap-2 overflow-y-auto">
+      <div class="immich-scrollbar mt-4 flex flex-wrap gap-2 overflow-y-auto select-none">
         {#each matchingPeople as person (person.id)}
           <div class="w-fit">
             <button
