@@ -54,6 +54,16 @@
   let flow: PickerFlow | undefined = $state();
   let hasPersonStep = $derived(flow?.step === 'type' && flow.hasPersonStep);
 
+  // Whoever the type will describe, so the type picker can order itself by the age difference
+  // between the two. Adding names them directly; relabelling takes them from the row.
+  let typeCounterpartId = $derived.by(() => {
+    if (flow?.step !== 'type') {
+      return;
+    }
+
+    return flow.target.kind === 'add' ? flow.target.counterpartId : flow.target.relatedPerson.id;
+  });
+
   const closeFlow = () => (flow = undefined);
 
   const handleAddRelationship = () => (flow = { step: 'person' });
@@ -354,6 +364,8 @@
         />
       {:else}
         <TypePickerSidePanel
+          subjectId={personPage.getPerson().id}
+          counterpartId={typeCounterpartId}
           onClose={handleTypeStepClose}
           onCancel={hasPersonStep ? closeFlow : undefined}
           onSelect={handleTypeSelected}

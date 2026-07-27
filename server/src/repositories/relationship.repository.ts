@@ -3,7 +3,15 @@ import { Kysely, sql, Transaction } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
 import { DB } from 'src/schema';
-import { Orderable, orderRelatedPeople, sortRankForName } from 'src/utils/relationship';
+import {
+  AgeGap,
+  ageGapForName,
+  invertAgeGap,
+  Orderable,
+  orderRelatedPeople,
+  sortRankForName,
+  symmetricAgeGap,
+} from 'src/utils/relationship';
 
 /**
  * The starter set seeded for an owner who has no types yet. Each entry is one pair; an entry
@@ -26,7 +34,7 @@ export const STARTER_RELATIONSHIP_TYPES: Array<[name: string, inverseName: strin
   ['Secondary School', 'Secondary School'],
 ];
 
-export interface RelationshipTypePair {
+export interface RelationshipTypePair extends AgeGap {
   id: string;
   name: string;
   inverseId: string;
@@ -92,6 +100,8 @@ export class RelationshipRepository {
       .select([
         'relationship_type.id',
         'relationship_type.name',
+        'relationship_type.minAgeGap',
+        'relationship_type.maxAgeGap',
         'inverse.id as inverseId',
         'inverse.name as inverseName',
       ])
@@ -110,6 +120,8 @@ export class RelationshipRepository {
         'relationship_type.id',
         'relationship_type.name',
         'relationship_type.ownerId',
+        'relationship_type.minAgeGap',
+        'relationship_type.maxAgeGap',
         'inverse.id as inverseId',
         'inverse.name as inverseName',
       ])
@@ -121,8 +133,18 @@ export class RelationshipRepository {
    * Creates a type together with its inverse. A blank inverse name, or one equal to the name,
    * makes the type symmetric: one row whose inverse is itself.
    */
-  createTypePair({ ownerId, name, inverseName }: { ownerId: string; name: string; inverseName?: string | null }) {
-    return this.db.transaction().execute((tx) => createTypePair(tx, { ownerId, name, inverseName }));
+  createTypePair({
+    ownerId,
+    name,
+    inverseName,
+    ageGap,
+  }: {
+    ownerId: string;
+    name: string;
+    inverseName?: string | null;
+    ageGap?: AgeGap;
+  }) {
+    return this.db.transaction().execute((tx) => createTypePair(tx, { ownerId, name, inverseName, ageGap }));
   }
 
   /**
@@ -154,6 +176,26 @@ export class RelationshipRepository {
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
   async renameType(id: string, name: string): Promise<void> {
     await this.db.updateTable('relationship_type').set({ name }).where('id', '=', id).execute();
+  }
+
+  /**
+   * Sets the expected age range on both halves of a pair at once: the inverse holds the same
+   * expectation read from the other end, so it is stored negated rather than as entered.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID, { minAgeGap: 15, maxAgeGap: 60 }] })
+  async setAgeGap(id: string, inverseId: string, ageGap: AgeGap): Promise<void> {
+    await this.db.transaction().execute(async (tx) => {
+      await tx.updateTable('relationship_type').set(ageGap).where('id', '=', id).execute();
+      if (inverseId !== id) {
+        await tx.updateTable('relationship_type').set(invertAgeGap(ageGap)).where('id', '=', inverseId).execute();
+      }
+    });
+  }
+
+  /** The birth dates of two people, for working out the age gap the type picker is ordered by. */
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  getBirthDates(ids: string[]) {
+    return this.db.selectFrom('person').select(['id', 'birthDate']).where('id', 'in', ids).execute();
   }
 
   /**
@@ -319,9 +361,7 @@ export class RelationshipRepository {
       .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
       .innerJoin('person', 'person.id', 'person_relationship.counterpartId')
       .leftJoin('person_relationship_order as ordering', (join) =>
-        join
-          .onRef('ordering.relatedPersonId', '=', 'person.id')
-          .on('ordering.personId', '=', personId),
+        join.onRef('ordering.relatedPersonId', '=', 'person.id').on('ordering.personId', '=', personId),
       )
       .select([
         'person_relationship.id',
@@ -343,9 +383,7 @@ export class RelationshipRepository {
       .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
       .innerJoin('person', 'person.id', 'person_relationship.subjectId')
       .leftJoin('person_relationship_order as ordering', (join) =>
-        join
-          .onRef('ordering.relatedPersonId', '=', 'person.id')
-          .on('ordering.personId', '=', personId),
+        join.onRef('ordering.relatedPersonId', '=', 'person.id').on('ordering.personId', '=', personId),
       )
       .select([
         'person_relationship.id',
@@ -441,51 +479,55 @@ export class RelationshipRepository {
   getCoAppearances(ownerId: string, personId: string): Promise<CoAppearance[]> {
     const sharedAssets = sql<number>`count(distinct "subject_face"."assetId")::int`;
 
-    return this.db
-      .selectFrom('person')
-      .leftJoin('asset_face', (join) =>
-        join.onRef('asset_face.personId', '=', 'person.id').on('asset_face.deletedAt', 'is', null),
-      )
-      .leftJoin('asset', (join) => join.onRef('asset.id', '=', 'asset_face.assetId').on('asset.deletedAt', 'is', null))
-      .leftJoin('asset_face as subject_face', (join) =>
-        join
-          .onRef('subject_face.assetId', '=', 'asset.id')
-          .on('subject_face.personId', '=', personId)
-          .on('subject_face.deletedAt', 'is', null),
-      )
-      .select(['person.id', 'person.name', 'person.thumbnailPath'])
-      .select(sharedAssets.as('sharedAssets'))
-      .where('person.ownerId', '=', ownerId)
-      .where('person.id', '!=', personId)
-      .where('person.isHidden', '=', false)
-      .where('person.name', '!=', '')
-      // Already-linked people are left out: this picker only starts a new relationship, and a
-      // further label for an existing counterpart is added from that counterpart's own row.
-      .where((eb) =>
-        eb.not(
-          eb.exists(
-            eb
-              .selectFrom('person_relationship')
-              .select(sql`1`.as('linked'))
-              .where((inner) =>
-                inner.or([
-                  inner.and([
-                    inner('person_relationship.subjectId', '=', personId),
-                    inner('person_relationship.counterpartId', '=', inner.ref('person.id')),
+    return (
+      this.db
+        .selectFrom('person')
+        .leftJoin('asset_face', (join) =>
+          join.onRef('asset_face.personId', '=', 'person.id').on('asset_face.deletedAt', 'is', null),
+        )
+        .leftJoin('asset', (join) =>
+          join.onRef('asset.id', '=', 'asset_face.assetId').on('asset.deletedAt', 'is', null),
+        )
+        .leftJoin('asset_face as subject_face', (join) =>
+          join
+            .onRef('subject_face.assetId', '=', 'asset.id')
+            .on('subject_face.personId', '=', personId)
+            .on('subject_face.deletedAt', 'is', null),
+        )
+        .select(['person.id', 'person.name', 'person.thumbnailPath'])
+        .select(sharedAssets.as('sharedAssets'))
+        .where('person.ownerId', '=', ownerId)
+        .where('person.id', '!=', personId)
+        .where('person.isHidden', '=', false)
+        .where('person.name', '!=', '')
+        // Already-linked people are left out: this picker only starts a new relationship, and a
+        // further label for an existing counterpart is added from that counterpart's own row.
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('person_relationship')
+                .select(sql`1`.as('linked'))
+                .where((inner) =>
+                  inner.or([
+                    inner.and([
+                      inner('person_relationship.subjectId', '=', personId),
+                      inner('person_relationship.counterpartId', '=', inner.ref('person.id')),
+                    ]),
+                    inner.and([
+                      inner('person_relationship.counterpartId', '=', personId),
+                      inner('person_relationship.subjectId', '=', inner.ref('person.id')),
+                    ]),
                   ]),
-                  inner.and([
-                    inner('person_relationship.counterpartId', '=', personId),
-                    inner('person_relationship.subjectId', '=', inner.ref('person.id')),
-                  ]),
-                ]),
-              ),
+                ),
+            ),
           ),
-        ),
-      )
-      .groupBy('person.id')
-      .orderBy(sharedAssets, 'desc')
-      .orderBy('person.name')
-      .execute();
+        )
+        .groupBy('person.id')
+        .orderBy(sharedAssets, 'desc')
+        .orderBy('person.name')
+        .execute()
+    );
   }
 }
 
@@ -505,31 +547,54 @@ const factKey = (subjectId: string, counterpartId: string, typeId: string, inver
   return first;
 };
 
+/**
+ * The range a pair starts with when the caller does not state one. Taken from whichever half has
+ * a known name, so recreating "Godparent"/"Child" still picks up the child expectation.
+ */
+const derivedAgeGap = (name: string, inverseName?: string | null): AgeGap => {
+  const fromName = ageGapForName(name);
+  if (fromName.minAgeGap !== null) {
+    return fromName;
+  }
+
+  return invertAgeGap(ageGapForName(inverseName ?? name));
+};
+
 const createTypePair = async (
   tx: Transaction<DB>,
-  { ownerId, name, inverseName }: { ownerId: string; name: string; inverseName?: string | null },
+  {
+    ownerId,
+    name,
+    inverseName,
+    ageGap,
+  }: { ownerId: string; name: string; inverseName?: string | null; ageGap?: AgeGap },
 ): Promise<RelationshipTypePair> => {
+  const isSymmetric = !inverseName || inverseName === name;
+  const requested = ageGap ?? derivedAgeGap(name, inverseName);
+  // A symmetric type is read from both ends at once, so only a range that equals its own
+  // negation can be true of both.
+  const gap = isSymmetric ? symmetricAgeGap(requested) : requested;
+
   const type = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name, sortRank: sortRankForName(name) })
+    .values({ ownerId, name, sortRank: sortRankForName(name), ...gap })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
-  const isSymmetric = !inverseName || inverseName === name;
   if (isSymmetric) {
     await tx.updateTable('relationship_type').set({ inverseId: type.id }).where('id', '=', type.id).execute();
 
-    return { id: type.id, name, inverseId: type.id, inverseName: name };
+    return { id: type.id, name, inverseId: type.id, inverseName: name, ...gap };
   }
 
   const inverse = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name: inverseName, sortRank: sortRankForName(inverseName) })
+    .values({ ownerId, name: inverseName, sortRank: sortRankForName(inverseName), ...invertAgeGap(gap) })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
   await tx.updateTable('relationship_type').set({ inverseId: inverse.id }).where('id', '=', type.id).execute();
   await tx.updateTable('relationship_type').set({ inverseId: type.id }).where('id', '=', inverse.id).execute();
 
-  return { id: type.id, name, inverseId: inverse.id, inverseName };
+  return { id: type.id, name, inverseId: inverse.id, inverseName, ...gap };
 };

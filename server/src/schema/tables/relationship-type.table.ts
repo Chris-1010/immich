@@ -1,6 +1,5 @@
 import { UpdatedAtTrigger, UpdateIdColumn } from 'src/decorators';
 import { UserTable } from 'src/schema/tables/user.table';
-import { DEFAULT_SORT_RANK } from 'src/utils/relationship';
 import {
   Column,
   CreateDateColumn,
@@ -12,6 +11,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'src/sql-tools';
+import { DEFAULT_SORT_RANK } from 'src/utils/relationship';
 
 @Table('relationship_type')
 @UpdatedAtTrigger('relationship_type_updatedAt')
@@ -38,6 +38,17 @@ export class RelationshipTypeTable {
   // and falls back to sorting by name.
   @Column({ type: 'integer', default: DEFAULT_SORT_RANK })
   sortRank!: Generated<number>;
+
+  // How much older the counterpart is expected to be than the subject, in signed years: a type
+  // describes the counterpart, so "Parent" holds a positive range and "Child" the negative of it.
+  // Both bounds are set together or not at all — no range means age says nothing about the type,
+  // which is not the same as a range the two people happen to fall outside of. Only used to order
+  // the type picker, never to reject a relationship the owner asks for.
+  @Column({ type: 'integer', nullable: true })
+  minAgeGap!: number | null;
+
+  @Column({ type: 'integer', nullable: true })
+  maxAgeGap!: number | null;
 
   // Nullable only so the first half of a pair can be inserted before the second one exists;
   // both halves are wired up in the same transaction. A type pointing at itself is symmetric.

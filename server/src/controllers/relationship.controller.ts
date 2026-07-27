@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Endpoint, HistoryBuilder } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
@@ -10,6 +10,7 @@ import {
   RelationshipResponseDto,
   RelationshipTypeCreateDto,
   RelationshipTypeResponseDto,
+  RelationshipTypeSearchDto,
   RelationshipTypeUpdateDto,
   RelationshipTypeUsageResponseDto,
   RelationshipUpdateDto,
@@ -31,11 +32,14 @@ export class RelationshipController {
   @Endpoint({
     summary: 'List relationship types',
     description:
-      'Retrieve every relationship type belonging to the authenticated user, each with its inverse. The starter set is created on the first call for a user who has none.',
+      'Retrieve every relationship type belonging to the authenticated user, each with its inverse. The starter set is created on the first call for a user who has none. Naming both people the type is being chosen for orders the list by how well each type fits the age difference between them, with the fitting ones flagged as `suggested`; this needs a birth date on both people and is ignored otherwise.',
     history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
   })
-  getRelationshipTypes(@Auth() auth: AuthDto): Promise<RelationshipTypeResponseDto[]> {
-    return this.service.getTypes(auth);
+  getRelationshipTypes(
+    @Auth() auth: AuthDto,
+    @Query() dto: RelationshipTypeSearchDto,
+  ): Promise<RelationshipTypeResponseDto[]> {
+    return this.service.getTypes(auth, dto);
   }
 
   @Post('types')
@@ -117,7 +121,7 @@ export class RelationshipController {
   @Endpoint({
     summary: "Reorder a person's relationships",
     description:
-      'Record the order the people on this page should be listed in. The order applies to this page only — it does not change how this person is listed on anyone else\'s. Anyone omitted goes back to being ordered by relationship type.',
+      "Record the order the people on this page should be listed in. The order applies to this page only — it does not change how this person is listed on anyone else's. Anyone omitted goes back to being ordered by relationship type.",
     history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
   })
   setRelatedPeopleOrder(
@@ -133,7 +137,7 @@ export class RelationshipController {
   @Endpoint({
     summary: 'List candidate counterparts',
     description:
-      "Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. The person themselves and anyone they are already related to are left out, so every result is a candidate for a new relationship.",
+      'Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. The person themselves and anyone they are already related to are left out, so every result is a candidate for a new relationship.',
     history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
   })
   getCoAppearances(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<CoAppearanceResponseDto[]> {

@@ -1,9 +1,30 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 import { CoAppearance, RelatedPerson, RelationshipTypePair } from 'src/repositories/relationship.repository';
+import { MAX_AGE_GAP } from 'src/utils/relationship';
 import { Optional, ValidateUUID } from 'src/validation';
 
-export class RelationshipTypeCreateDto {
+/**
+ * The expected age difference, in signed years: how much older the counterpart usually is than
+ * the subject. Sent as a pair or not at all — one bound on its own says nothing.
+ */
+class AgeGapFields {
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @Optional({ nullable: true })
+  @IsInt()
+  @Min(-MAX_AGE_GAP)
+  @Max(MAX_AGE_GAP)
+  minAgeGap?: number | null;
+
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @Optional({ nullable: true })
+  @IsInt()
+  @Min(-MAX_AGE_GAP)
+  @Max(MAX_AGE_GAP)
+  maxAgeGap?: number | null;
+}
+
+export class RelationshipTypeCreateDto extends AgeGapFields {
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -14,7 +35,7 @@ export class RelationshipTypeCreateDto {
   inverseName?: string | null;
 }
 
-export class RelationshipTypeUpdateDto {
+export class RelationshipTypeUpdateDto extends AgeGapFields {
   @IsString()
   @IsNotEmpty()
   @Optional()
@@ -26,12 +47,36 @@ export class RelationshipTypeUpdateDto {
   inverseName?: string;
 }
 
+/** Narrows the type list to the pair of people it is being chosen for, so it can be ordered by age. */
+export class RelationshipTypeSearchDto {
+  /** The person whose page the type is being chosen from. */
+  @ValidateUUID({ optional: true })
+  subjectId?: string;
+
+  /** The other person: the one the type would describe. */
+  @ValidateUUID({ optional: true })
+  counterpartId?: string;
+}
+
 export class RelationshipTypeResponseDto {
   id!: string;
   name!: string;
   /** Equal to `id` when the type is symmetric. */
   inverseId!: string;
   inverseName!: string;
+
+  /** How much older the counterpart is expected to be, in signed years. Null when age says nothing. */
+  @ApiProperty({ type: 'integer', nullable: true })
+  minAgeGap!: number | null;
+
+  @ApiProperty({ type: 'integer', nullable: true })
+  maxAgeGap!: number | null;
+
+  /**
+   * Whether the age difference between the two people the list was requested for fits this type.
+   * Always false when no pair was given, or when either of them has no birth date.
+   */
+  suggested!: boolean;
 }
 
 /** How much a pair deletion would take with it, for the confirmation dialog. */
@@ -153,11 +198,14 @@ export function mapCoAppearance(person: CoAppearance): CoAppearanceResponseDto {
   };
 }
 
-export function mapRelationshipType(type: RelationshipTypePair): RelationshipTypeResponseDto {
+export function mapRelationshipType(type: RelationshipTypePair & { suggested?: boolean }): RelationshipTypeResponseDto {
   return {
     id: type.id,
     name: type.name,
     inverseId: type.inverseId,
     inverseName: type.inverseName,
+    minAgeGap: type.minAgeGap,
+    maxAgeGap: type.maxAgeGap,
+    suggested: type.suggested ?? false,
   };
 }

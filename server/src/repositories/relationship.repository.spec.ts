@@ -101,6 +101,20 @@ describe(canonicalOrder.name, () => {
   });
 });
 
+/** One row of a person's page as the ordering query returns it. */
+const relatedRow = (personId: string, name: string, sortRank: number, sortOrder: number | null) => ({
+  id: `relationship-${personId}`,
+  personId,
+  name,
+  thumbnailPath: `/${name}.jpg`,
+  typeId: 'type-x',
+  typeName: 'X',
+  sortRank,
+  inverseId: 'type-x',
+  inverseName: 'X',
+  sortOrder,
+});
+
 describe(RelationshipRepository.name, () => {
   describe('create', () => {
     it('should skip the insert when the relationship already exists', async () => {
@@ -230,21 +244,8 @@ describe(RelationshipRepository.name, () => {
     });
 
     it('should list the people in the order they were dragged into', async () => {
-      const row = (personId: string, name: string, sortRank: number, sortOrder: number | null) => ({
-        id: `relationship-${personId}`,
-        personId,
-        name,
-        thumbnailPath: `/${name}.jpg`,
-        typeId: 'type-x',
-        typeName: 'X',
-        sortRank,
-        inverseId: 'type-x',
-        inverseName: 'X',
-        sortOrder,
-      });
-
       // Carol is family and Bob is not, so the default order would be the other way round.
-      const { sut } = newRepository([[row('person-b', 'Bob', 1000, 0), row('person-c', 'Carol', 10, 1)]]);
+      const { sut } = newRepository([[relatedRow('person-b', 'Bob', 1000, 0), relatedRow('person-c', 'Carol', 10, 1)]]);
 
       const people = await sut.getRelatedPeople('person-a');
 
@@ -272,6 +273,58 @@ describe(RelationshipRepository.name, () => {
 
       expect(statements).toHaveLength(1);
       expect(statements[0].sql.split(' ')[0]).toEqual('delete');
+    });
+  });
+
+  describe('createTypePair', () => {
+    it('should store the opposite half of a seeded range negated', async () => {
+      const { sut, statements } = newRepository([[{ id: 'type-parent' }], [{ id: 'type-child' }]]);
+
+      await sut.createTypePair({ ownerId: 'owner-1', name: 'Parent', inverseName: 'Child' });
+
+      const inserts = statements.filter((statement) => statement.sql.startsWith('insert'));
+      const [primary, inverse] = inserts;
+      // "Parent" expects the counterpart to be the older one, so "Child" expects the reverse.
+      expect(primary.parameters).toContain(15);
+      expect(primary.parameters).toContain(60);
+      expect(inverse.parameters).toContain(-60);
+      expect(inverse.parameters).toContain(-15);
+    });
+
+    it('should mirror a lopsided range given for a symmetric type', async () => {
+      const { sut, statements } = newRepository([[{ id: 'type-friend' }]]);
+
+      await sut.createTypePair({
+        ownerId: 'owner-1',
+        name: 'Friend',
+        ageGap: { minAgeGap: -2, maxAgeGap: 10 },
+      });
+
+      const insert = statements.find((statement) => statement.sql.startsWith('insert'))!;
+      expect(insert.parameters).toContain(-10);
+      expect(insert.parameters).toContain(10);
+    });
+  });
+
+  describe('setAgeGap', () => {
+    it('should store the range negated on the opposite half', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.setAgeGap('type-parent', 'type-child', { minAgeGap: 20, maxAgeGap: 50 });
+
+      const updates = statements.map((statement) => statement.parameters);
+      expect(updates).toEqual([
+        [20, 50, 'type-parent'],
+        [-50, -20, 'type-child'],
+      ]);
+    });
+
+    it('should write once for a symmetric type', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.setAgeGap('type-sibling', 'type-sibling', { minAgeGap: -25, maxAgeGap: 25 });
+
+      expect(statements).toHaveLength(1);
     });
   });
 

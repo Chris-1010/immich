@@ -8608,9 +8608,30 @@
     },
     "/relationships/types": {
       "get": {
-        "description": "Retrieve every relationship type belonging to the authenticated user, each with its inverse. The starter set is created on the first call for a user who has none.",
+        "description": "Retrieve every relationship type belonging to the authenticated user, each with its inverse. The starter set is created on the first call for a user who has none. Naming both people the type is being chosen for orders the list by how well each type fits the age difference between them, with the fitting ones flagged as `suggested`; this needs a birth date on both people and is ignored otherwise.",
         "operationId": "getRelationshipTypes",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "counterpartId",
+            "required": false,
+            "in": "query",
+            "description": "The other person: the one the type would describe.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "subjectId",
+            "required": false,
+            "in": "query",
+            "description": "The person whose page the type is being chosen from.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -19733,6 +19754,14 @@
             "nullable": true,
             "type": "string"
           },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           }
@@ -19754,15 +19783,31 @@
           "inverseName": {
             "type": "string"
           },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "description": "How much older the counterpart is expected to be, in signed years. Null when age says nothing.",
+            "nullable": true,
+            "type": "integer"
+          },
           "name": {
             "type": "string"
+          },
+          "suggested": {
+            "description": "Whether the age difference between the two people the list was requested for fits this type.\nAlways false when no pair was given, or when either of them has no birth date.",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "inverseId",
           "inverseName",
-          "name"
+          "maxAgeGap",
+          "minAgeGap",
+          "name",
+          "suggested"
         ],
         "type": "object"
       },
@@ -19770,6 +19815,14 @@
         "properties": {
           "inverseName": {
             "type": "string"
+          },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "nullable": true,
+            "type": "integer"
           },
           "name": {
             "type": "string"

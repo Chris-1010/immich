@@ -1034,11 +1034,19 @@ export type RelationshipTypeResponseDto = {
     /** Equal to `id` when the type is symmetric. */
     inverseId: string;
     inverseName: string;
+    maxAgeGap: number | null;
+    /** How much older the counterpart is expected to be, in signed years. Null when age says nothing. */
+    minAgeGap: number | null;
     name: string;
+    /** Whether the age difference between the two people the list was requested for fits this type.
+    Always false when no pair was given, or when either of them has no birth date. */
+    suggested: boolean;
 };
 export type RelationshipTypeCreateDto = {
     /** A blank opposite makes the type symmetric: its inverse is itself. */
     inverseName?: string | null;
+    maxAgeGap?: number | null;
+    minAgeGap?: number | null;
     name: string;
 };
 export type RelationshipTypeUsageResponseDto = {
@@ -1047,6 +1055,8 @@ export type RelationshipTypeUsageResponseDto = {
 };
 export type RelationshipTypeUpdateDto = {
     inverseName?: string;
+    maxAgeGap?: number | null;
+    minAgeGap?: number | null;
     name?: string;
 };
 export type RelationshipUpdateDto = {
@@ -3870,11 +3880,17 @@ export function setRelatedPeopleOrder({ id, relationshipOrderUpdateDto }: {
 /**
  * List relationship types
  */
-export function getRelationshipTypes(opts?: Oazapfts.RequestOpts) {
+export function getRelationshipTypes({ counterpartId, subjectId }: {
+    counterpartId?: string;
+    subjectId?: string;
+}, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: RelationshipTypeResponseDto[];
-    }>("/relationships/types", {
+    }>(`/relationships/types${QS.query(QS.explode({
+        counterpartId,
+        subjectId
+    }))}`, {
         ...opts
     }));
 }

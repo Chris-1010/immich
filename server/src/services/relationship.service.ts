@@ -12,6 +12,7 @@ import {
   RelationshipResponseDto,
   RelationshipTypeCreateDto,
   RelationshipTypeResponseDto,
+  RelationshipTypeSearchDto,
   RelationshipTypeUpdateDto,
   RelationshipTypeUsageResponseDto,
   RelationshipUpdateDto,
@@ -19,6 +20,33 @@ import {
 import { Permission } from 'src/enum';
 import { canonicalOrder, RelationshipTypePair } from 'src/repositories/relationship.repository';
 import { BaseService } from 'src/services/base.service';
+import { AgeGap, ageGapBetween, invertAgeGap, orderTypesByAgeFit, symmetricAgeGap } from 'src/utils/relationship';
+
+/**
+ * The expected age difference as the caller stated it, or undefined when they said nothing about
+ * it. The two bounds only mean something together, so one on its own is rejected rather than
+ * guessed at, and clearing either clears both.
+ */
+const readAgeGap = (dto: { minAgeGap?: number | null; maxAgeGap?: number | null }): AgeGap | undefined => {
+  const { minAgeGap, maxAgeGap } = dto;
+  if (minAgeGap === undefined && maxAgeGap === undefined) {
+    return;
+  }
+
+  if (minAgeGap === undefined || maxAgeGap === undefined || minAgeGap === null || maxAgeGap === null) {
+    if ((minAgeGap ?? null) === null && (maxAgeGap ?? null) === null) {
+      return { minAgeGap: null, maxAgeGap: null };
+    }
+
+    throw new BadRequestException('An expected age difference needs both a lowest and a highest value');
+  }
+
+  if (minAgeGap > maxAgeGap) {
+    throw new BadRequestException('The lowest expected age difference cannot be above the highest');
+  }
+
+  return { minAgeGap, maxAgeGap };
+};
 
 /** The same pair read from the other end, so a mirrored row can be described without a re-read. */
 const invertPair = (type: RelationshipTypePair): RelationshipTypePair => ({
@@ -26,19 +54,27 @@ const invertPair = (type: RelationshipTypePair): RelationshipTypePair => ({
   name: type.inverseName,
   inverseId: type.id,
   inverseName: type.name,
+  ...invertAgeGap(type),
 });
 
 @Injectable()
 export class RelationshipService extends BaseService {
-  /** The starter set is seeded on first read, so an owner never sees an empty type picker. */
-  async getTypes(auth: AuthDto): Promise<RelationshipTypeResponseDto[]> {
+  /**
+   * The starter set is seeded on first read, so an owner never sees an empty type picker.
+   *
+   * Naming both people orders the list by how well each type fits the age difference between
+   * them, which is what turns a list of twenty into a short answer at the top.
+   */
+  async getTypes(auth: AuthDto, dto: RelationshipTypeSearchDto = {}): Promise<RelationshipTypeResponseDto[]> {
     let types = await this.relationshipRepository.getTypes(auth.user.id);
     if (types.length === 0) {
       await this.relationshipRepository.seedTypes(auth.user.id);
       types = await this.relationshipRepository.getTypes(auth.user.id);
     }
 
-    return types.map((type) => mapRelationshipType(type));
+    const ageGap = await this.ageGapBetweenPeople(auth, dto);
+
+    return orderTypesByAgeFit(types, ageGap).map((type) => mapRelationshipType(type));
   }
 
   async createType(auth: AuthDto, dto: RelationshipTypeCreateDto): Promise<RelationshipTypeResponseDto> {
@@ -50,7 +86,12 @@ export class RelationshipService extends BaseService {
 
     await this.requireUniquePair(auth.user.id, name, inverseName);
 
-    const type = await this.relationshipRepository.createTypePair({ ownerId: auth.user.id, name, inverseName });
+    const type = await this.relationshipRepository.createTypePair({
+      ownerId: auth.user.id,
+      name,
+      inverseName,
+      ageGap: readAgeGap(dto),
+    });
 
     return mapRelationshipType(type);
   }
@@ -85,7 +126,22 @@ export class RelationshipService extends BaseService {
       await this.relationshipRepository.renameType(type.inverseId, inverseName);
     }
 
-    return { id: type.id, name, inverseId: type.inverseId, inverseName };
+    const requested = readAgeGap(dto);
+    // A symmetric type is read from both ends at once, so only a range that equals its own
+    // negation can be true of both.
+    const ageGap = requested && isSymmetric ? symmetricAgeGap(requested) : requested;
+    if (ageGap) {
+      await this.relationshipRepository.setAgeGap(type.id, type.inverseId, ageGap);
+    }
+
+    return mapRelationshipType({
+      id: type.id,
+      name,
+      inverseId: type.inverseId,
+      inverseName,
+      minAgeGap: ageGap ? ageGap.minAgeGap : type.minAgeGap,
+      maxAgeGap: ageGap ? ageGap.maxAgeGap : type.maxAgeGap,
+    });
   }
 
   /** What deleting this pair would remove, so the confirmation can say so before it happens. */
@@ -244,6 +300,27 @@ export class RelationshipService extends BaseService {
     if (mirrored) {
       return { relationship: mirrored, type: invertPair(type) };
     }
+  }
+
+  /**
+   * How much older the counterpart is than the subject, or null when the caller named no pair or
+   * either of them has no birth date recorded.
+   */
+  private async ageGapBetweenPeople(
+    auth: AuthDto,
+    { subjectId, counterpartId }: RelationshipTypeSearchDto,
+  ): Promise<number | null> {
+    if (!subjectId || !counterpartId || subjectId === counterpartId) {
+      return null;
+    }
+
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [subjectId, counterpartId] });
+
+    const people = await this.relationshipRepository.getBirthDates([subjectId, counterpartId]);
+    const subject = people.find((person) => person.id === subjectId);
+    const counterpart = people.find((person) => person.id === counterpartId);
+
+    return ageGapBetween(subject?.birthDate, counterpart?.birthDate);
   }
 
   private async findRelationshipOrFail(id: string) {

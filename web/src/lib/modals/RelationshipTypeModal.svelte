@@ -31,12 +31,51 @@
 
   let { type, onClose }: Props = $props();
 
+  /** Matches the bound the server accepts, so a typo is reported here rather than as a failed save. */
+  const MAX_AGE_GAP = 150;
+
   // Symmetry is fixed when a type is created: the server refuses to rename a symmetric type into
   // an asymmetric one, or the reverse. Editing therefore only ever offers the names.
   const isEditingSymmetric = type ? type.id === type.inverseId : false;
 
   let name = $state(type?.name ?? '');
   let inverseName = $state(type && !isEditingSymmetric ? type.inverseName : '');
+
+  // A symmetric type is read from both ends at once, so its range can only be "within so many
+  // years either way" — one number rather than a lowest and a highest.
+  let isSymmetric = $derived(type ? isEditingSymmetric : !inverseName.trim());
+
+  const asField = (value: number | null | undefined) => (value === null || value === undefined ? '' : String(value));
+
+  let ageSpread = $state(asField(type?.maxAgeGap));
+  let minAgeGap = $state(asField(type?.minAgeGap));
+  let maxAgeGap = $state(asField(type?.maxAgeGap));
+
+  /**
+   * The range as entered, in signed years: how much older the person the type describes usually
+   * is. Undefined when it does not parse, which is reported rather than saved.
+   */
+  const readAgeGap = (): { minAgeGap: number | null; maxAgeGap: number | null } | undefined => {
+    const fields = isSymmetric ? [ageSpread, ageSpread] : [minAgeGap, maxAgeGap];
+    const [lowest, highest] = fields.map((field) => field.trim());
+
+    if (!lowest && !highest) {
+      return { minAgeGap: null, maxAgeGap: null };
+    }
+
+    if (!lowest || !highest) {
+      return;
+    }
+
+    const parsed = [lowest, highest].map(Number);
+    if (parsed.some((value) => !Number.isInteger(value) || Math.abs(value) > MAX_AGE_GAP)) {
+      return;
+    }
+
+    const [min, max] = isSymmetric ? [-Math.abs(parsed[1]), Math.abs(parsed[1])] : parsed;
+
+    return min > max ? undefined : { minAgeGap: min, maxAgeGap: max };
+  };
 
   const onsubmit = async () => {
     const trimmedName = name.trim();
@@ -52,19 +91,29 @@
       return;
     }
 
+    const ageGap = readAgeGap();
+    if (!ageGap) {
+      toastManager.warning($t('relationship_type_age_gap_invalid'));
+      return;
+    }
+
     try {
       let saved: RelationshipTypeResponseDto;
       if (type) {
         saved = await updateRelationshipType({
           id: type.id,
           relationshipTypeUpdateDto: isEditingSymmetric
-            ? { name: trimmedName }
-            : { name: trimmedName, inverseName: trimmedInverseName },
+            ? { name: trimmedName, ...ageGap }
+            : { name: trimmedName, inverseName: trimmedInverseName, ...ageGap },
         });
         toastManager.success($t('relationship_type_updated', { values: { name: saved.name } }));
       } else {
         saved = await createRelationshipType({
-          relationshipTypeCreateDto: { name: trimmedName, inverseName: trimmedInverseName || undefined },
+          relationshipTypeCreateDto: {
+            name: trimmedName,
+            inverseName: trimmedInverseName || undefined,
+            ...ageGap,
+          },
         });
         toastManager.success($t('relationship_type_created', { values: { name: saved.name } }));
       }
@@ -136,6 +185,22 @@
             required={!!type}
           >
             <Input bind:value={inverseName} />
+          </Field>
+        {/if}
+
+        {#if isSymmetric}
+          <Field
+            label={$t('relationship_type_age_spread')}
+            description={$t('relationship_type_age_spread_description')}
+          >
+            <Input inputmode="numeric" bind:value={ageSpread} />
+          </Field>
+        {:else}
+          <Field label={$t('relationship_type_age_gap')} description={$t('relationship_type_age_gap_description')}>
+            <div class="flex gap-2">
+              <Input inputmode="numeric" bind:value={minAgeGap} aria-label={$t('relationship_type_age_gap_lowest')} />
+              <Input inputmode="numeric" bind:value={maxAgeGap} aria-label={$t('relationship_type_age_gap_highest')} />
+            </div>
           </Field>
         {/if}
       </div>

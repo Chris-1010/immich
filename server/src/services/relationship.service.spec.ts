@@ -5,10 +5,12 @@ import { newTestService, ServiceMocks } from 'test/utils';
 
 const ownerId = authStub.admin.user.id;
 
-const parentType = { id: 'type-parent', name: 'Parent', ownerId, inverseId: 'type-child', inverseName: 'Child' };
-const childType = { id: 'type-child', name: 'Child', ownerId, inverseId: 'type-parent', inverseName: 'Parent' };
-const siblingType = { id: 'type-sibling', name: 'Sibling', ownerId, inverseId: 'type-sibling', inverseName: 'Sibling' };
-const workType = { id: 'type-work', name: 'Work', ownerId, inverseId: 'type-work', inverseName: 'Work' };
+const gap = (minAgeGap: number | null, maxAgeGap: number | null) => ({ minAgeGap, maxAgeGap });
+
+const parentType = { id: 'type-parent', name: 'Parent', ownerId, inverseId: 'type-child', inverseName: 'Child', ...gap(15, 60) }; // prettier-ignore
+const childType = { id: 'type-child', name: 'Child', ownerId, inverseId: 'type-parent', inverseName: 'Parent', ...gap(-60, -15) }; // prettier-ignore
+const siblingType = { id: 'type-sibling', name: 'Sibling', ownerId, inverseId: 'type-sibling', inverseName: 'Sibling', ...gap(-25, 25) }; // prettier-ignore
+const workType = { id: 'type-work', name: 'Work', ownerId, inverseId: 'type-work', inverseName: 'Work', ...gap(null, null) }; // prettier-ignore
 
 /** Alice sorts before Bob, so a symmetric relationship between them is stored with Alice first. */
 const alice = 'person-alice';
@@ -46,8 +48,22 @@ describe(RelationshipService.name, () => {
       mocks.relationship.getTypes.mockResolvedValueOnce([parentType, childType]);
 
       await expect(sut.getTypes(authStub.admin)).resolves.toEqual([
-        { id: parentType.id, name: 'Parent', inverseId: 'type-child', inverseName: 'Child' },
-        { id: childType.id, name: 'Child', inverseId: 'type-parent', inverseName: 'Parent' },
+        {
+          id: parentType.id,
+          name: 'Parent',
+          inverseId: 'type-child',
+          inverseName: 'Child',
+          ...gap(15, 60),
+          suggested: false,
+        },
+        {
+          id: childType.id,
+          name: 'Child',
+          inverseId: 'type-parent',
+          inverseName: 'Parent',
+          ...gap(-60, -15),
+          suggested: false,
+        },
       ]);
 
       expect(mocks.relationship.seedTypes).toHaveBeenCalledWith(ownerId);
@@ -58,10 +74,56 @@ describe(RelationshipService.name, () => {
       mocks.relationship.getTypes.mockResolvedValue([siblingType]);
 
       await expect(sut.getTypes(authStub.admin)).resolves.toEqual([
-        { id: siblingType.id, name: 'Sibling', inverseId: 'type-sibling', inverseName: 'Sibling' },
+        {
+          id: siblingType.id,
+          name: 'Sibling',
+          inverseId: 'type-sibling',
+          inverseName: 'Sibling',
+          ...gap(-25, 25),
+          suggested: false,
+        },
       ]);
 
       expect(mocks.relationship.seedTypes).not.toHaveBeenCalled();
+    });
+
+    it('should offer the types the age difference fits first', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([parentType, childType, siblingType, workType]);
+      // Bob was born thirty years before Alice, so he is old enough to be her parent.
+      mocks.relationship.getBirthDates.mockResolvedValue([
+        { id: alice, birthDate: new Date('2000-06-01') },
+        { id: bob, birthDate: new Date('1970-06-01') },
+      ]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice, counterpartId: bob });
+
+      expect(types.map(({ name, suggested }) => [name, suggested])).toEqual([
+        ['Parent', true],
+        ['Work', false],
+        ['Sibling', false],
+        ['Child', false],
+      ]);
+    });
+
+    it('should leave the order alone when one of the two has no birth date', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([parentType, childType, siblingType, workType]);
+      mocks.relationship.getBirthDates.mockResolvedValue([
+        { id: alice, birthDate: null },
+        { id: bob, birthDate: new Date('1970-06-01') },
+      ]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice, counterpartId: bob });
+
+      expect(types.map(({ name }) => name)).toEqual(['Parent', 'Child', 'Sibling', 'Work']);
+      expect(types.some(({ suggested }) => suggested)).toBe(false);
+    });
+
+    it('should not read birth dates when only one person is named', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([siblingType]);
+
+      await sut.getTypes(authStub.admin, { subjectId: alice });
+
+      expect(mocks.relationship.getBirthDates).not.toHaveBeenCalled();
     });
   });
 
@@ -77,13 +139,14 @@ describe(RelationshipService.name, () => {
     });
 
     it('should allow a repeated name with a different opposite', async () => {
-      const uncleNephew = { id: 'type-uncle', name: 'Uncle', ownerId, inverseId: 'type-nephew', inverseName: 'Nephew' };
+      const uncleNephew = { id: 'type-uncle', name: 'Uncle', ownerId, inverseId: 'type-nephew', inverseName: 'Nephew', ...gap(10, 60) }; // prettier-ignore
       mocks.relationship.getTypes.mockResolvedValue([uncleNephew]);
       mocks.relationship.createTypePair.mockResolvedValue({
         id: 'type-uncle-2',
         name: 'Uncle',
         inverseId: 'type-niece',
         inverseName: 'Niece',
+        ...gap(10, 60),
       });
 
       await expect(sut.createType(authStub.admin, { name: 'Uncle', inverseName: 'Niece' })).resolves.toEqual({
@@ -91,26 +154,80 @@ describe(RelationshipService.name, () => {
         name: 'Uncle',
         inverseId: 'type-niece',
         inverseName: 'Niece',
+        ...gap(10, 60),
+        suggested: false,
       });
     });
 
     it('should treat a blank opposite as symmetric', async () => {
       mocks.relationship.getTypes.mockResolvedValue([]);
-      mocks.relationship.createTypePair.mockResolvedValue({
-        id: workType.id,
-        name: 'Work',
-        inverseId: workType.id,
-        inverseName: 'Work',
-      });
+      mocks.relationship.createTypePair.mockResolvedValue(workType);
 
       await expect(sut.createType(authStub.admin, { name: 'Work', inverseName: '' })).resolves.toEqual({
         id: workType.id,
         name: 'Work',
         inverseId: workType.id,
         inverseName: 'Work',
+        ...gap(null, null),
+        suggested: false,
       });
 
-      expect(mocks.relationship.createTypePair).toHaveBeenCalledWith({ ownerId, name: 'Work', inverseName: 'Work' });
+      expect(mocks.relationship.createTypePair).toHaveBeenCalledWith({
+        ownerId,
+        name: 'Work',
+        inverseName: 'Work',
+        ageGap: undefined,
+      });
+    });
+
+    it('should store the expected age difference the owner entered', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([]);
+      mocks.relationship.createTypePair.mockResolvedValue({
+        id: 'type-godparent',
+        name: 'Godparent',
+        inverseId: 'type-godchild',
+        inverseName: 'Godchild',
+        ...gap(15, 60),
+      });
+
+      await sut.createType(authStub.admin, {
+        name: 'Godparent',
+        inverseName: 'Godchild',
+        minAgeGap: 15,
+        maxAgeGap: 60,
+      });
+
+      expect(mocks.relationship.createTypePair).toHaveBeenCalledWith({
+        ownerId,
+        name: 'Godparent',
+        inverseName: 'Godchild',
+        ageGap: gap(15, 60),
+      });
+    });
+
+    it('should reject an expected age difference given only one bound', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([]);
+
+      await expect(
+        sut.createType(authStub.admin, { name: 'Godparent', inverseName: 'Godchild', minAgeGap: 15 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.relationship.createTypePair).not.toHaveBeenCalled();
+    });
+
+    it('should reject an expected age difference whose bounds are the wrong way round', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([]);
+
+      await expect(
+        sut.createType(authStub.admin, {
+          name: 'Godparent',
+          inverseName: 'Godchild',
+          minAgeGap: 60,
+          maxAgeGap: 15,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.relationship.createTypePair).not.toHaveBeenCalled();
     });
   });
 
@@ -122,7 +239,14 @@ describe(RelationshipService.name, () => {
 
       await expect(
         sut.updateType(authStub.admin, parentType.id, { name: 'Mother', inverseName: 'Daughter' }),
-      ).resolves.toEqual({ id: parentType.id, name: 'Mother', inverseId: 'type-child', inverseName: 'Daughter' });
+      ).resolves.toEqual({
+        id: parentType.id,
+        name: 'Mother',
+        inverseId: 'type-child',
+        inverseName: 'Daughter',
+        ...gap(15, 60),
+        suggested: false,
+      });
 
       expect(mocks.relationship.renameType).toHaveBeenNthCalledWith(1, parentType.id, 'Mother');
       expect(mocks.relationship.renameType).toHaveBeenNthCalledWith(2, childType.id, 'Daughter');
@@ -138,9 +262,56 @@ describe(RelationshipService.name, () => {
         name: 'Brother',
         inverseId: siblingType.id,
         inverseName: 'Brother',
+        ...gap(-25, 25),
+        suggested: false,
       });
 
       expect(mocks.relationship.renameType).toHaveBeenCalledTimes(1);
+    });
+
+    it('should store a new expected age difference on both halves', async () => {
+      mocks.relationship.getType.mockResolvedValue(parentType);
+      mocks.relationship.getTypes.mockResolvedValue([parentType]);
+      mocks.relationship.renameType.mockResolvedValue(void 0);
+      mocks.relationship.setAgeGap.mockResolvedValue(void 0);
+
+      const updated = await sut.updateType(authStub.admin, parentType.id, { minAgeGap: 20, maxAgeGap: 50 });
+
+      expect(mocks.relationship.setAgeGap).toHaveBeenCalledWith(parentType.id, childType.id, gap(20, 50));
+      expect(updated).toMatchObject(gap(20, 50));
+    });
+
+    it('should mirror an expected age difference given for a symmetric type', async () => {
+      mocks.relationship.getType.mockResolvedValue(siblingType);
+      mocks.relationship.getTypes.mockResolvedValue([siblingType]);
+      mocks.relationship.renameType.mockResolvedValue(void 0);
+      mocks.relationship.setAgeGap.mockResolvedValue(void 0);
+
+      // Both people hold "Sibling" at once, so a range that only reaches one way cannot be true.
+      await sut.updateType(authStub.admin, siblingType.id, { minAgeGap: -3, maxAgeGap: 20 });
+
+      expect(mocks.relationship.setAgeGap).toHaveBeenCalledWith(siblingType.id, siblingType.id, gap(-20, 20));
+    });
+
+    it('should clear an expected age difference when both bounds are cleared', async () => {
+      mocks.relationship.getType.mockResolvedValue(parentType);
+      mocks.relationship.getTypes.mockResolvedValue([parentType]);
+      mocks.relationship.renameType.mockResolvedValue(void 0);
+      mocks.relationship.setAgeGap.mockResolvedValue(void 0);
+
+      await sut.updateType(authStub.admin, parentType.id, { minAgeGap: null, maxAgeGap: null });
+
+      expect(mocks.relationship.setAgeGap).toHaveBeenCalledWith(parentType.id, childType.id, gap(null, null));
+    });
+
+    it('should leave the expected age difference alone when it is not mentioned', async () => {
+      mocks.relationship.getType.mockResolvedValue(parentType);
+      mocks.relationship.getTypes.mockResolvedValue([parentType]);
+      mocks.relationship.renameType.mockResolvedValue(void 0);
+
+      await sut.updateType(authStub.admin, parentType.id, { name: 'Mother' });
+
+      expect(mocks.relationship.setAgeGap).not.toHaveBeenCalled();
     });
 
     it('should reject giving a symmetric type a different opposite', async () => {

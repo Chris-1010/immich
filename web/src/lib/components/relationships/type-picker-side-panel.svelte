@@ -13,22 +13,21 @@
   import { fly } from 'svelte/transition';
 
   interface Props {
+    /** The person whose page the type is being chosen from. */
+    subjectId: string;
+    /** The other person: the one the type will describe. */
+    counterpartId?: string;
     onClose: () => void;
     /** Shown as a separate control when closing this panel goes back a step rather than ending the flow. */
     onCancel?: () => void;
     onSelect: (type: RelationshipTypeResponseDto) => void;
   }
 
-  let { onClose, onCancel, onSelect }: Props = $props();
+  let { subjectId, counterpartId, onClose, onCancel, onSelect }: Props = $props();
 
   let types: RelationshipTypeResponseDto[] = $state([]);
   let isLoadingTypes = $state(false);
   let searchName = $state('');
-
-  // The server orders by name then inverse name; new and renamed types are put back in that order
-  // rather than the list being reloaded.
-  const byName = (a: RelationshipTypeResponseDto, b: RelationshipTypeResponseDto) =>
-    a.name.localeCompare(b.name) || a.inverseName.localeCompare(b.inverseName);
 
   const matchesSearch = (type: RelationshipTypeResponseDto, search: string) => {
     const query = search.trim().toLowerCase();
@@ -41,10 +40,15 @@
   // direction is picked. Searching narrows on either name for the same reason.
   let matchingTypes = $derived(searchName.trim() ? types.filter((type) => matchesSearch(type, searchName)) : types);
 
+  // The server puts the types the two people's ages fit at the front and flags them, so the list
+  // only has to keep that order and draw the line between the two groups.
+  let suggestedTypes = $derived(matchingTypes.filter((type) => type.suggested));
+  let otherTypes = $derived(matchingTypes.filter((type) => !type.suggested));
+
   const loadTypes = async () => {
     const timeout = setTimeout(() => (isLoadingTypes = true), timeBeforeShowLoadingSpinner);
     try {
-      types = await getRelationshipTypes();
+      types = await getRelationshipTypes({ subjectId, counterpartId });
     } catch (error) {
       handleError(error, $t('errors.unable_to_load_relationship_types'));
     } finally {
@@ -56,7 +60,9 @@
   const handleCreate = async () => {
     const result = await modalManager.show(RelationshipTypeModal, {});
     if (result?.action === 'saved') {
-      types = [...types, result.type].sort(byName);
+      // Where a saved type belongs depends on the age range it was given, which is the server's
+      // ordering to make, so the list is read back rather than patched.
+      await loadTypes();
     }
   };
 
@@ -67,16 +73,7 @@
     }
 
     if (result.action === 'saved') {
-      const saved = result.type;
-      types = types
-        .map((entry) => {
-          if (entry.id === saved.id) {
-            return saved;
-          }
-          // The other half of the pair holds the same two names the other way round.
-          return entry.id === saved.inverseId ? { ...entry, name: saved.inverseName, inverseName: saved.name } : entry;
-        })
-        .sort(byName);
+      await loadTypes();
       return;
     }
 
@@ -132,32 +129,51 @@
     {:else if matchingTypes.length === 0}
       <p class="mt-4 text-center">{$t('no_relationship_types_found')}</p>
     {:else}
-      <ul class="immich-scrollbar mt-4 flex flex-col gap-1 overflow-y-auto">
-        {#each matchingTypes as type (type.id)}
-          <li class="flex place-items-center gap-1 rounded-lg hover:bg-subtle">
-            <button
-              type="button"
-              class="flex min-w-0 grow flex-col place-items-start px-3 py-2 text-start"
-              onclick={() => onSelect(type)}
-            >
-              <span class="w-full truncate font-medium text-primary">{type.name}</span>
-              <!-- Type names are not unique, so the inverse is what tells two "Uncle"s apart. -->
-              <span class="w-full truncate text-xs text-gray-600 dark:text-gray-400">
-                {$t('relationship_type_inverse', { values: { name: type.inverseName } })}
-              </span>
-            </button>
-            <button
-              type="button"
-              class="rounded-full p-2 text-gray-600 dark:text-gray-300 hover:text-primary"
-              title={$t('relationship_type_edit')}
-              aria-label={$t('relationship_type_edit')}
-              onclick={() => handleEdit(type)}
-            >
-              <Icon icon={mdiPencilOutline} size="1.25em" aria-hidden />
-            </button>
-          </li>
-        {/each}
-      </ul>
+      <div class="immich-scrollbar mt-4 overflow-y-auto">
+        <!-- The two groups are only worth naming when both are there; on their own the heading
+             would label the whole list. -->
+        {#if suggestedTypes.length > 0 && otherTypes.length > 0}
+          <h2 class="px-3 pb-1 text-xs font-medium text-gray-600 uppercase dark:text-gray-400">
+            {$t('relationship_types_suggested')}
+          </h2>
+        {/if}
+        {@render typeList(suggestedTypes)}
+        {#if suggestedTypes.length > 0 && otherTypes.length > 0}
+          <h2 class="px-3 pt-3 pb-1 text-xs font-medium text-gray-600 uppercase dark:text-gray-400">
+            {$t('relationship_types_other')}
+          </h2>
+        {/if}
+        {@render typeList(otherTypes)}
+      </div>
     {/if}
   </div>
 </section>
+
+{#snippet typeList(entries: RelationshipTypeResponseDto[])}
+  <ul class="flex flex-col gap-1">
+    {#each entries as type (type.id)}
+      <li class="flex place-items-center gap-1 rounded-lg hover:bg-subtle">
+        <button
+          type="button"
+          class="flex min-w-0 grow flex-col place-items-start px-3 py-2 text-start"
+          onclick={() => onSelect(type)}
+        >
+          <span class="w-full truncate font-medium text-primary">{type.name}</span>
+          <!-- Type names are not unique, so the inverse is what tells two "Uncle"s apart. -->
+          <span class="w-full truncate text-xs text-gray-600 dark:text-gray-400">
+            {$t('relationship_type_inverse', { values: { name: type.inverseName } })}
+          </span>
+        </button>
+        <button
+          type="button"
+          class="rounded-full p-2 text-gray-600 dark:text-gray-300 hover:text-primary"
+          title={$t('relationship_type_edit')}
+          aria-label={$t('relationship_type_edit')}
+          onclick={() => handleEdit(type)}
+        >
+          <Icon icon={mdiPencilOutline} size="1.25em" aria-hidden />
+        </button>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
