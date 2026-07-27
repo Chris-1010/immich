@@ -783,11 +783,35 @@ describe(RelationshipService.name, () => {
       ]);
 
       await expect(sut.getCoAppearances(authStub.admin, alice)).resolves.toEqual([
-        { id: bob, name: 'Bob', thumbnailPath: '/bob.jpg', sharedAssets: 12 },
-        { id: 'person-carol', name: 'Carol', thumbnailPath: '/carol.jpg', sharedAssets: 0 },
+        { id: bob, name: 'Bob', thumbnailPath: '/bob.jpg', sharedAssets: 12, gender: null },
+        { id: 'person-carol', name: 'Carol', thumbnailPath: '/carol.jpg', sharedAssets: 0, gender: null },
       ]);
 
       expect(mocks.relationship.getCoAppearances).toHaveBeenCalledWith(ownerId, alice);
+    });
+
+    it('should state the gender a candidate’s own labels imply, and nothing for the rest', async () => {
+      mocks.relationship.getCoAppearances.mockResolvedValue([
+        { id: bob, name: 'Bob', thumbnailPath: '/bob.jpg', sharedAssets: 12, mutualCounterparts: 0 },
+        { id: 'person-carol', name: 'Carol', thumbnailPath: '/carol.jpg', sharedAssets: 0, mutualCounterparts: 2 },
+      ]);
+      // Carol is only ever somebody's cousin, which states nothing about her.
+      mocks.relationship.getGenderEvidence.mockResolvedValue([{ personId: bob, gender: 'male' }]);
+
+      await expect(sut.getCoAppearances(authStub.admin, alice)).resolves.toEqual([
+        expect.objectContaining({ id: bob, gender: 'male' }),
+        expect.objectContaining({ id: 'person-carol', gender: null }),
+      ]);
+
+      expect(mocks.relationship.getGenderEvidence).toHaveBeenCalledWith([bob, 'person-carol']);
+    });
+
+    it('should not ask about genders when nobody is left to offer', async () => {
+      mocks.relationship.getCoAppearances.mockResolvedValue([]);
+
+      await expect(sut.getCoAppearances(authStub.admin, alice)).resolves.toEqual([]);
+
+      expect(mocks.relationship.getGenderEvidence).not.toHaveBeenCalled();
     });
   });
 });

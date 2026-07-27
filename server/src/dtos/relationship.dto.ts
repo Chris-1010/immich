@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 import { CoAppearance, RelatedPerson, RelationshipTypePair } from 'src/repositories/relationship.repository';
-import { MAX_AGE_GAP } from 'src/utils/relationship';
+import { MAX_AGE_GAP, RelationshipGender } from 'src/utils/relationship';
 import { Optional, ValidateUUID } from 'src/validation';
 
 /**
@@ -157,6 +157,14 @@ export class CoAppearanceResponseDto {
 
   @ApiProperty({ type: 'integer' })
   sharedAssets!: number;
+
+  /**
+   * What the labels this person already holds state about them, or null when nothing about them is
+   * known yet. A gender is never recorded against a person directly, only implied by their
+   * relationships, so labels that disagree state nothing between them.
+   */
+  @ApiProperty({ enum: ['male', 'female'], enumName: 'RelationshipGender', nullable: true })
+  gender!: RelationshipGender | null;
 }
 
 export function mapRelationship(
@@ -189,12 +197,13 @@ export function mapRelatedPerson(person: RelatedPerson): RelatedPersonResponseDt
   };
 }
 
-export function mapCoAppearance(person: CoAppearance): CoAppearanceResponseDto {
+export function mapCoAppearance(person: CoAppearance, gender: RelationshipGender | null): CoAppearanceResponseDto {
   return {
     id: person.id,
     name: person.name,
     thumbnailPath: person.thumbnailPath,
     sharedAssets: person.sharedAssets,
+    gender,
   };
 }
 

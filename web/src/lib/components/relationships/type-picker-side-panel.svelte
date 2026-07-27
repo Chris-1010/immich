@@ -17,13 +17,26 @@
     subjectId: string;
     /** The other person: the one the type will describe. */
     counterpartId?: string;
+    /**
+     * The type the two people already hold, when the panel was opened from an existing label. It is
+     * marked in the list so the label being changed — and the inverse it reads as from the other
+     * person's page — is visible beside whatever it is being changed to.
+     */
+    selectedTypeId?: string;
     onClose: () => void;
     /** Shown as a separate control when closing this panel goes back a step rather than ending the flow. */
     onCancel?: () => void;
     onSelect: (type: RelationshipTypeResponseDto) => void;
   }
 
-  let { subjectId, counterpartId, onClose, onCancel, onSelect }: Props = $props();
+  let { subjectId, counterpartId, selectedTypeId, onClose, onCancel, onSelect }: Props = $props();
+
+  /** Brings the marked entry into view, since the list is long enough to hide it below the fold. */
+  const reveal = (node: HTMLElement, isSelected: boolean) => {
+    if (isSelected) {
+      node.scrollIntoView({ block: 'nearest' });
+    }
+  };
 
   let types: RelationshipTypeResponseDto[] = $state([]);
   let isLoadingTypes = $state(false);
@@ -153,7 +166,13 @@
 {#snippet typeList(entries: RelationshipTypeResponseDto[])}
   <ul class="flex flex-col gap-1">
     {#each entries as type (type.id)}
-      <li class="flex place-items-center gap-1 rounded-lg hover:bg-subtle">
+      <li
+        class="flex place-items-center gap-1 rounded-lg hover:bg-subtle {type.id === selectedTypeId
+          ? 'bg-subtle ring-1 ring-primary'
+          : ''}"
+        aria-current={type.id === selectedTypeId ? 'true' : undefined}
+        use:reveal={type.id === selectedTypeId}
+      >
         <button
           type="button"
           class="flex min-w-0 grow flex-col place-items-start px-3 py-2 text-start"

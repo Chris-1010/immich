@@ -65,6 +65,12 @@
     return flow.target.kind === 'add' ? flow.target.counterpartId : flow.target.relatedPerson.id;
   });
 
+  // Only a relabel has a label to mark: adding starts from nothing, even for a person who already
+  // holds other labels.
+  let selectedTypeId = $derived(
+    flow?.step === 'type' && flow.target.kind === 'relabel' ? flow.target.relationship.typeId : undefined,
+  );
+
   const closeFlow = () => (flow = undefined);
 
   const handleAddRelationship = () => (flow = { step: 'person' });
@@ -380,6 +386,7 @@
         <TypePickerSidePanel
           subjectId={personPage.getPerson().id}
           counterpartId={typeCounterpartId}
+          {selectedTypeId}
           onClose={handleTypeStepClose}
           onCancel={hasPersonStep ? closeFlow : undefined}
           onSelect={handleTypeSelected}

@@ -1019,6 +1019,10 @@ export type RelatedPersonResponseDto = {
     thumbnailPath: string;
 };
 export type CoAppearanceResponseDto = {
+    /** What the labels this person already holds state about them, or null when nothing about them is
+    known yet. A gender is never recorded against a person directly, only implied by their
+    relationships, so labels that disagree state nothing between them. */
+    gender: (RelationshipGender) | null;
     id: string;
     name: string;
     sharedAssets: number;
@@ -5744,6 +5748,10 @@ export enum JobName {
     OcrQueueAll = "OcrQueueAll",
     Ocr = "Ocr",
     WorkflowRun = "WorkflowRun"
+}
+export enum RelationshipGender {
+    Male = "male",
+    Female = "female"
 }
 export enum SearchSuggestionType {
     Country = "country",

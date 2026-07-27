@@ -202,13 +202,28 @@ export class RelationshipService extends BaseService {
     await this.relationshipRepository.setRelatedPeopleOrder(personId, relatedPersonIds);
   }
 
-  /** Candidate counterparts, most shared photos first. Already-related people are left out. */
+  /**
+   * Candidate counterparts, most shared photos first. Already-related people are left out.
+   *
+   * Each candidate is returned with whatever gender their own labels state, so the picker can show
+   * what is already known about someone before a type is chosen for them.
+   */
   async getCoAppearances(auth: AuthDto, personId: string): Promise<CoAppearanceResponseDto[]> {
     await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [personId] });
 
     const people = await this.relationshipRepository.getCoAppearances(auth.user.id, personId);
+    if (people.length === 0) {
+      return [];
+    }
 
-    return people.map((person) => mapCoAppearance(person));
+    const evidence = await this.relationshipRepository.getGenderEvidence(people.map(({ id }) => id));
+
+    return people.map((person) =>
+      mapCoAppearance(
+        person,
+        inferGender(evidence.filter((row) => row.personId === person.id).map((row) => row.gender)),
+      ),
+    );
   }
 
   /**

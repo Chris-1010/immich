@@ -4,7 +4,7 @@
   import SearchBar from '$lib/elements/SearchBar.svelte';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { getCoAppearances, type CoAppearanceResponseDto } from '@immich/sdk';
+  import { getCoAppearances, RelationshipGender, type CoAppearanceResponseDto } from '@immich/sdk';
   import { IconButton, LoadingSpinner } from '@immich/ui';
   import { mdiArrowLeftThin } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -27,6 +27,22 @@
   const matchesSearch = (name: string, search: string) => {
     const query = search.trim().toLowerCase();
     return name.split(' ').some((part) => part.toLowerCase().startsWith(query));
+  };
+
+  // Nothing states a gender for someone whose labels are all neutral, and the ring is left off
+  // rather than guessed at: an unringed face means unknown, not neither.
+  const genderRing = (gender: CoAppearanceResponseDto['gender']) => {
+    switch (gender) {
+      case RelationshipGender.Male: {
+        return 'ring-2 ring-[royalblue]';
+      }
+      case RelationshipGender.Female: {
+        return 'ring-2 ring-[hotpink]';
+      }
+      default: {
+        return '';
+      }
+    }
   };
 
   // The candidates already arrive ordered by co-appearance, so searching narrows that list
@@ -97,6 +113,7 @@
                 title={person.name}
                 widthStyle="90px"
                 heightStyle="90px"
+                class={genderRing(person.gender)}
               />
               <p class="mt-1 truncate font-medium" title={person.name}>{person.name}</p>
               {#if person.sharedAssets > 0}
