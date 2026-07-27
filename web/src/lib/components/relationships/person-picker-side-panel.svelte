@@ -4,9 +4,10 @@
   import SearchBar from '$lib/elements/SearchBar.svelte';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { getCoAppearances, RelationshipGender, type CoAppearanceResponseDto } from '@immich/sdk';
-  import { IconButton, LoadingSpinner } from '@immich/ui';
-  import { mdiArrowLeftThin } from '@mdi/js';
+  import { genderRingClass } from '$lib/utils/person-gender';
+  import { getCoAppearances, type CoAppearanceResponseDto } from '@immich/sdk';
+  import { Button, Icon, IconButton, LoadingSpinner } from '@immich/ui';
+  import { mdiArrowLeftThin, mdiCheck } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { linear } from 'svelte/easing';
@@ -15,7 +16,8 @@
   interface Props {
     subjectId: string;
     onClose: () => void;
-    onSelect: (person: CoAppearanceResponseDto) => void;
+    /** Everyone chosen at once. A plain click hands over one person; ctrl-clicking gathers several. */
+    onSelect: (people: CoAppearanceResponseDto[]) => void;
   }
 
   let { subjectId, onClose, onSelect }: Props = $props();
@@ -23,26 +25,28 @@
   let people: CoAppearanceResponseDto[] = $state([]);
   let isLoadingPeople = $state(false);
   let searchName = $state('');
+  let selectedIds = $state<string[]>([]);
+
+  // Read back from the list so the people handed over are in the order they are shown in, not the
+  // order they happened to be ticked in.
+  let selectedPeople = $derived(people.filter((person) => selectedIds.includes(person.id)));
+
+  const handleClick = (event: MouseEvent, person: CoAppearanceResponseDto) => {
+    // Ctrl — or Cmd — gathers people up for one trip through the type step. A plain click stays the
+    // single-person shortcut it has always been, and starts over from whoever it landed on.
+    if (event.ctrlKey || event.metaKey) {
+      selectedIds = selectedIds.includes(person.id)
+        ? selectedIds.filter((id) => id !== person.id)
+        : [...selectedIds, person.id];
+      return;
+    }
+
+    onSelect([person]);
+  };
 
   const matchesSearch = (name: string, search: string) => {
     const query = search.trim().toLowerCase();
     return name.split(' ').some((part) => part.toLowerCase().startsWith(query));
-  };
-
-  // Nothing states a gender for someone whose labels are all neutral, and the ring is left off
-  // rather than guessed at: an unringed face means unknown, not neither.
-  const genderRing = (gender: CoAppearanceResponseDto['gender']) => {
-    switch (gender) {
-      case RelationshipGender.Male: {
-        return 'ring-2 ring-[royalblue]';
-      }
-      case RelationshipGender.Female: {
-        return 'ring-2 ring-[hotpink]';
-      }
-      default: {
-        return '';
-      }
-    }
   };
 
   // The candidates already arrive ordered by co-appearance, so searching narrows that list
@@ -89,6 +93,14 @@
     <SearchBar placeholder={$t('search_people')} bind:name={searchName} showLoadingSpinner={false} focusOnMount />
   </div>
 
+  <!-- A gathered selection has nothing to advance it, since the click that would have advanced it is
+       the one adding to it. -->
+  {#if selectedPeople.length > 0}
+    <div class="px-4 pt-4">
+      <Button size="small" shape="round" onclick={() => onSelect(selectedPeople)}>{$t('next')}</Button>
+    </div>
+  {/if}
+
   <div class="px-4 py-4 text-sm">
     {#if isLoadingPeople}
       <div class="flex w-full justify-center">
@@ -104,17 +116,29 @@
       <div class="immich-scrollbar mt-4 flex flex-wrap gap-2 overflow-y-auto">
         {#each matchingPeople as person (person.id)}
           <div class="w-fit">
-            <button type="button" class="w-22.5" onclick={() => onSelect(person)}>
-              <ImageThumbnail
-                curve
-                shadow
-                url={getPeopleThumbnailUrl(person)}
-                altText={person.name}
-                title={person.name}
-                widthStyle="90px"
-                heightStyle="90px"
-                class={genderRing(person.gender)}
-              />
+            <button
+              type="button"
+              class="w-22.5"
+              aria-pressed={selectedIds.includes(person.id)}
+              onclick={(event) => handleClick(event, person)}
+            >
+              <div class="relative">
+                <ImageThumbnail
+                  curve
+                  shadow
+                  url={getPeopleThumbnailUrl(person)}
+                  altText={person.name}
+                  title={person.name}
+                  widthStyle="90px"
+                  heightStyle="90px"
+                  class={genderRingClass(person.gender)}
+                />
+                {#if selectedIds.includes(person.id)}
+                  <span class="absolute -top-1 -end-1 rounded-full bg-primary p-0.5 text-white" title={$t('selected')}>
+                    <Icon icon={mdiCheck} size="1em" aria-hidden />
+                  </span>
+                {/if}
+              </div>
               <p class="mt-1 truncate font-medium" title={person.name}>{person.name}</p>
               {#if person.sharedAssets > 0}
                 <p class="truncate text-xs text-gray-600 dark:text-gray-400">

@@ -8429,6 +8429,55 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/relationships/genders": {
+      "get": {
+        "description": "Retrieve the gender each person in the library is stated to be by the relationship labels they hold, for the pages that show faces without showing the relationships behind them. People whose labels state nothing, or state two different things, are left out rather than listed as unknown.",
+        "operationId": "getPersonGenders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonGenderResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List the genders relationships state",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.read",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/relationships/people/{id}": {
       "get": {
         "description": "Retrieve everyone a person is related to, grouped one entry per person, with every label read from that person's end.",
@@ -18744,6 +18793,25 @@
         },
         "type": "object"
       },
+      "PersonGenderResponseDto": {
+        "properties": {
+          "gender": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RelationshipGender"
+              }
+            ]
+          },
+          "personId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "gender",
+          "personId"
+        ],
+        "type": "object"
+      },
       "PersonRelationshipResponseDto": {
         "properties": {
           "id": {
@@ -19707,7 +19775,6 @@
         "type": "object"
       },
       "RelationshipGender": {
-        "description": "What the labels this person already holds state about them, or null when nothing about them is\nknown yet. A gender is never recorded against a person directly, only implied by their\nrelationships, so labels that disagree state nothing between them.",
         "enum": [
           "male",
           "female"

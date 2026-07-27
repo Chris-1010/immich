@@ -6,7 +6,7 @@
   import { handleError } from '$lib/utils/handle-error';
   import { getRelationshipTypes, type RelationshipTypeResponseDto } from '@immich/sdk';
   import { Button, Icon, IconButton, LoadingSpinner, modalManager } from '@immich/ui';
-  import { mdiArrowLeftThin, mdiClose, mdiPencilOutline, mdiPlus } from '@mdi/js';
+  import { mdiArrowLeftThin, mdiCheck, mdiClose, mdiPencilOutline, mdiPlus } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { linear } from 'svelte/easing';
@@ -23,13 +23,27 @@
      * person's page — is visible beside whatever it is being changed to.
      */
     selectedTypeId?: string;
+    /**
+     * Whether several types may be gathered at once. Adding takes as many labels as are chosen;
+     * relabelling replaces one label with one other, so there is nothing to gather.
+     */
+    allowMultiple?: boolean;
     onClose: () => void;
     /** Shown as a separate control when closing this panel goes back a step rather than ending the flow. */
     onCancel?: () => void;
-    onSelect: (type: RelationshipTypeResponseDto) => void;
+    /** Every type chosen. A plain click hands over one; ctrl-clicking gathers several. */
+    onSelect: (types: RelationshipTypeResponseDto[]) => void;
   }
 
-  let { subjectId, counterpartId, selectedTypeId, onClose, onCancel, onSelect }: Props = $props();
+  let {
+    subjectId,
+    counterpartId,
+    selectedTypeId,
+    allowMultiple = false,
+    onClose,
+    onCancel,
+    onSelect,
+  }: Props = $props();
 
   /** Brings the marked entry into view, since the list is long enough to hide it below the fold. */
   const reveal = (node: HTMLElement, isSelected: boolean) => {
@@ -41,6 +55,23 @@
   let types: RelationshipTypeResponseDto[] = $state([]);
   let isLoadingTypes = $state(false);
   let searchName = $state('');
+  let gatheredIds = $state<string[]>([]);
+
+  // Read back from the list so the types are handed over in the order they are shown in.
+  let gatheredTypes = $derived(types.filter((type) => gatheredIds.includes(type.id)));
+
+  const handleClick = (event: MouseEvent, type: RelationshipTypeResponseDto) => {
+    // Ctrl — or Cmd — applies several labels to the same people in one go, which is how someone
+    // ends up both a brother and a housemate.
+    if (allowMultiple && (event.ctrlKey || event.metaKey)) {
+      gatheredIds = gatheredIds.includes(type.id)
+        ? gatheredIds.filter((id) => id !== type.id)
+        : [...gatheredIds, type.id];
+      return;
+    }
+
+    onSelect([type]);
+  };
 
   const matchesSearch = (type: RelationshipTypeResponseDto, search: string) => {
     const query = search.trim().toLowerCase();
@@ -132,9 +163,17 @@
   </div>
 
   <div class="px-4 py-4 text-sm">
-    <Button leadingIcon={mdiPlus} size="small" shape="round" variant="ghost" onclick={handleCreate}>
-      {$t('relationship_type_new')}
-    </Button>
+    <div class="flex place-items-center gap-2">
+      <Button leadingIcon={mdiPlus} size="small" shape="round" variant="ghost" onclick={handleCreate}>
+        {$t('relationship_type_new')}
+      </Button>
+
+      <!-- A gathered selection has nothing to apply it, since the click that would have applied it
+           is the one adding to it. -->
+      {#if gatheredTypes.length > 0}
+        <Button size="small" shape="round" onclick={() => onSelect(gatheredTypes)}>{$t('add')}</Button>
+      {/if}
+    </div>
 
     {#if isLoadingTypes}
       <div class="mt-4 flex w-full justify-center">
@@ -176,9 +215,17 @@
         <button
           type="button"
           class="flex min-w-0 grow flex-col place-items-start px-3 py-2 text-start"
-          onclick={() => onSelect(type)}
+          aria-pressed={gatheredIds.includes(type.id)}
+          onclick={(event) => handleClick(event, type)}
         >
-          <span class="w-full truncate font-medium text-primary">{type.name}</span>
+          <span class="flex w-full place-items-center gap-1">
+            {#if gatheredIds.includes(type.id)}
+              <span class="shrink-0 text-primary" title={$t('selected')}>
+                <Icon icon={mdiCheck} size="1em" aria-hidden />
+              </span>
+            {/if}
+            <span class="truncate font-medium text-primary">{type.name}</span>
+          </span>
           <!-- Type names are not unique, so the inverse is what tells two "Uncle"s apart. -->
           <span class="w-full truncate text-xs text-gray-600 dark:text-gray-400">
             {$t('relationship_type_inverse', { values: { name: type.inverseName } })}

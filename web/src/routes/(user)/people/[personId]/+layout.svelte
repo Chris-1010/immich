@@ -11,10 +11,17 @@
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
   import { locale } from '$lib/stores/preferences.store';
   import { websocketEvents } from '$lib/stores/websocket';
-  import { getPeopleThumbnailUrl } from '$lib/utils';
+  import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { isExternalUrl } from '$lib/utils/navigation';
-  import { getPersonStatistics, searchPerson, updatePerson, type PersonResponseDto } from '@immich/sdk';
+  import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
+  import {
+    getPersonStatistics,
+    searchPerson,
+    updatePerson,
+    type PersonResponseDto,
+    type RelationshipGender,
+  } from '@immich/sdk';
   import { Icon, LoadingSpinner, modalManager, toastManager } from '@immich/ui';
   import { mdiAccountMultipleOutline, mdiImageMultipleOutline } from '@mdi/js';
   import { DateTime } from 'luxon';
@@ -100,7 +107,19 @@
     refreshAssetCount: updateAssetCount,
   });
 
+  /** What this person's own labels state they are, when anything does. */
+  let gender = $state<RelationshipGender>();
+
+  const loadGender = async () => {
+    // A ring is decoration on a page that works without it, so a failure to load one is not worth
+    // interrupting the page over.
+    const genders = await loadPersonGenders().catch(() => ({}) as Record<string, RelationshipGender>);
+    gender = genders[person.id];
+  };
+
   onMount(() => {
+    handlePromiseError(loadGender());
+
     const routeBeforeThisPage = $page.url.searchParams.get(QueryParameter.PREVIOUS_ROUTE);
     if (routeBeforeThisPage && !isExternalUrl(routeBeforeThisPage)) {
       previousRoute = routeBeforeThisPage;
@@ -115,6 +134,10 @@
 
   afterNavigate(({ from, to }) => {
     const cameFromThisPerson = from?.route.id?.startsWith(PERSON_ROUTE_ID) ?? false;
+
+    // Re-read on the way back from the relationships tab, since a label added there is what
+    // decides the ring.
+    handlePromiseError(loadGender());
 
     // Switching tabs leaves any photo selection mode behind.
     if (cameFromThisPerson && from?.route.id !== to?.route.id) {
@@ -273,6 +296,7 @@
                 altText={person.name}
                 widthStyle="3.375rem"
                 heightStyle="3.375rem"
+                class={genderRingClass(gender)}
               />
               <div class="flex flex-col justify-center text-start px-4 text-primary">
                 <p class="w-40 sm:w-72 font-medium truncate">{person.name || $t('add_a_name')}</p>

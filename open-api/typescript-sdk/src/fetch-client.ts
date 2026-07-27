@@ -1005,6 +1005,10 @@ export type RelationshipResponseDto = {
     typeId: string;
     typeName: string;
 };
+export type PersonGenderResponseDto = {
+    gender: RelationshipGender;
+    personId: string;
+};
 export type PersonRelationshipResponseDto = {
     id: string;
     inverseId: string;
@@ -3841,6 +3845,17 @@ export function createRelationship({ relationshipCreateDto }: {
         method: "POST",
         body: relationshipCreateDto
     })));
+}
+/**
+ * List the genders relationships state
+ */
+export function getPersonGenders(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonGenderResponseDto[];
+    }>("/relationships/genders", {
+        ...opts
+    }));
 }
 /**
  * List a person's relationships

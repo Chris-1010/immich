@@ -6,6 +6,7 @@ import {
   mapRelatedPerson,
   mapRelationship,
   mapRelationshipType,
+  PersonGenderResponseDto,
   RelatedPersonResponseDto,
   RelationshipCreateDto,
   RelationshipOrderUpdateDto,
@@ -27,6 +28,7 @@ import {
   inferGender,
   invertAgeGap,
   orderTypesByAgeFit,
+  RelationshipGender,
   symmetricAgeGap,
 } from 'src/utils/relationship';
 
@@ -224,6 +226,33 @@ export class RelationshipService extends BaseService {
         inferGender(evidence.filter((row) => row.personId === person.id).map((row) => row.gender)),
       ),
     );
+  }
+
+  /**
+   * Everyone in the library whose own labels state a gender, for the pages that show faces without
+   * showing the relationships behind them.
+   *
+   * Only the people something is known about are returned: absence is the answer for everyone
+   * else, and sending a row per unknown person would be most of a library.
+   */
+  async getGenders(auth: AuthDto): Promise<PersonGenderResponseDto[]> {
+    const evidence = await this.relationshipRepository.getOwnedGenderEvidence(auth.user.id);
+    const byPerson = new Map<string, Array<RelationshipGender | null>>();
+
+    for (const { personId, gender } of evidence) {
+      byPerson.set(personId, [...(byPerson.get(personId) ?? []), gender]);
+    }
+
+    const genders: PersonGenderResponseDto[] = [];
+    for (const [personId, stated] of byPerson) {
+      // Labels that disagree state nothing between them, which leaves the person unlisted.
+      const gender = inferGender(stated);
+      if (gender) {
+        genders.push({ personId, gender });
+      }
+    }
+
+    return genders;
   }
 
   /**

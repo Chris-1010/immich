@@ -4,6 +4,7 @@ import { Endpoint, HistoryBuilder } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
 import {
   CoAppearanceResponseDto,
+  PersonGenderResponseDto,
   RelatedPersonResponseDto,
   RelationshipCreateDto,
   RelationshipOrderUpdateDto,
@@ -101,6 +102,18 @@ export class RelationshipController {
     @Param() { id }: UUIDParamDto,
   ): Promise<RelationshipTypeUsageResponseDto> {
     return this.service.deleteType(auth, id);
+  }
+
+  @Get('genders')
+  @Authenticated({ permission: Permission.PersonRead })
+  @Endpoint({
+    summary: 'List the genders relationships state',
+    description:
+      'Retrieve the gender each person in the library is stated to be by the relationship labels they hold, for the pages that show faces without showing the relationships behind them. People whose labels state nothing, or state two different things, are left out rather than listed as unknown.',
+    history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
+  })
+  getPersonGenders(@Auth() auth: AuthDto): Promise<PersonGenderResponseDto[]> {
+    return this.service.getGenders(auth);
   }
 
   @Get('people/:id')

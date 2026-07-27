@@ -46,7 +46,7 @@
     | {
         step: 'type';
         target:
-          | { kind: 'add'; counterpartId: string }
+          | { kind: 'add'; counterpartIds: string[] }
           | { kind: 'relabel'; relatedPerson: RelatedPersonResponseDto; relationship: PersonRelationshipResponseDto };
         /** True when the type step was reached through the person step, so closing it goes back. */
         hasPersonStep: boolean;
@@ -57,12 +57,19 @@
 
   // Whoever the type will describe, so the type picker can order itself by the age difference
   // between the two. Adding names them directly; relabelling takes them from the row.
+  //
+  // A batch has nobody in particular to compare against, so it is left unnamed: an age or a gender
+  // read off one of several people would narrow the list for all of them.
   let typeCounterpartId = $derived.by(() => {
     if (flow?.step !== 'type') {
       return;
     }
 
-    return flow.target.kind === 'add' ? flow.target.counterpartId : flow.target.relatedPerson.id;
+    if (flow.target.kind === 'relabel') {
+      return flow.target.relatedPerson.id;
+    }
+
+    return flow.target.counterpartIds.length === 1 ? flow.target.counterpartIds[0] : undefined;
   });
 
   // Only a relabel has a label to mark: adding starts from nothing, even for a person who already
@@ -87,13 +94,17 @@
   }));
 
   const handleAddLabel = (relatedPerson: RelatedPersonResponseDto) =>
-    (flow = { step: 'type', target: { kind: 'add', counterpartId: relatedPerson.id }, hasPersonStep: false });
+    (flow = { step: 'type', target: { kind: 'add', counterpartIds: [relatedPerson.id] }, hasPersonStep: false });
 
   const handleRelabel = (relatedPerson: RelatedPersonResponseDto, relationship: PersonRelationshipResponseDto) =>
     (flow = { step: 'type', target: { kind: 'relabel', relatedPerson, relationship }, hasPersonStep: false });
 
-  const handlePersonSelected = (person: CoAppearanceResponseDto) =>
-    (flow = { step: 'type', target: { kind: 'add', counterpartId: person.id }, hasPersonStep: true });
+  const handlePersonSelected = (people: CoAppearanceResponseDto[]) =>
+    (flow = {
+      step: 'type',
+      target: { kind: 'add', counterpartIds: people.map(({ id }) => id) },
+      hasPersonStep: true,
+    });
 
   // The back arrow on the type step returns to the person step when there is one; otherwise it
   // is the only way out and ends the flow.
@@ -107,30 +118,36 @@
     }
   };
 
-  const handleTypeSelected = async (type: RelationshipTypeResponseDto) => {
+  const handleTypeSelected = async (types: RelationshipTypeResponseDto[]) => {
     const current = flow;
-    if (current?.step !== 'type') {
+    if (current?.step !== 'type' || types.length === 0) {
       return;
     }
 
     flow = undefined;
 
     await (current.target.kind === 'add'
-      ? addRelationship(current.target.counterpartId, type)
-      : relabel(current.target.relatedPerson, current.target.relationship, type));
+      ? addRelationships(current.target.counterpartIds, types)
+      : // Relabelling swaps one label for one other, so the picker never gathers more than one.
+        relabel(current.target.relatedPerson, current.target.relationship, types[0]));
   };
 
-  const addRelationship = async (counterpartId: string, type: RelationshipTypeResponseDto) => {
+  /** Every chosen label applied to every chosen person: three cousins are three people, one type. */
+  const addRelationships = async (counterpartIds: string[], types: RelationshipTypeResponseDto[]) => {
     try {
-      await createRelationship({
-        relationshipCreateDto: { subjectId: personPage.getPerson().id, counterpartId, typeId: type.id },
-      });
+      for (const counterpartId of counterpartIds) {
+        for (const type of types) {
+          await createRelationship({
+            relationshipCreateDto: { subjectId: personPage.getPerson().id, counterpartId, typeId: type.id },
+          });
+        }
+      }
     } catch (error) {
+      // Whatever was written before the failure stays written, so the refresh below still runs.
       handleError(error, $t('errors.unable_to_add_relationship'));
-      return;
     }
 
-    // The stored row may be canonicalised or already exist from the other end, so the list is
+    // The stored rows may be canonicalised or already exist from the other end, so the list is
     // read back rather than guessed at.
     await refresh();
   };
@@ -387,6 +404,7 @@
           subjectId={personPage.getPerson().id}
           counterpartId={typeCounterpartId}
           {selectedTypeId}
+          allowMultiple={flow.target.kind === 'add'}
           onClose={handleTypeStepClose}
           onCancel={hasPersonStep ? closeFlow : undefined}
           onSelect={handleTypeSelected}

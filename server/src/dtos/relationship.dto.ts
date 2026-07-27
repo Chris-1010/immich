@@ -167,6 +167,14 @@ export class CoAppearanceResponseDto {
   gender!: RelationshipGender | null;
 }
 
+/** One person their relationships state a gender for. People nothing is known about are not listed. */
+export class PersonGenderResponseDto {
+  personId!: string;
+
+  @ApiProperty({ enum: ['male', 'female'], enumName: 'RelationshipGender' })
+  gender!: RelationshipGender;
+}
+
 export function mapRelationship(
   relationship: { id: string; subjectId: string; counterpartId: string },
   type: RelationshipTypePair,

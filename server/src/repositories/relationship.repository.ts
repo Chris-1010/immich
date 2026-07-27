@@ -254,6 +254,31 @@ export class RelationshipRepository {
   }
 
   /**
+   * The same evidence for everyone in a library at once, so a page showing many faces can be
+   * answered by one query instead of one per person. Only labels that state a gender are rows at
+   * all, which keeps this to the size of the family rather than the size of the library.
+   */
+  @GenerateSql({ params: [DummyValue.UUID] })
+  getOwnedGenderEvidence(ownerId: string) {
+    const described = this.db
+      .selectFrom('person_relationship')
+      .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
+      .select(['person_relationship.counterpartId as personId', 'type.gender as gender'])
+      .where('person_relationship.ownerId', '=', ownerId)
+      .where('type.gender', 'is not', null);
+
+    const describing = this.db
+      .selectFrom('person_relationship')
+      .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
+      .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
+      .select(['person_relationship.subjectId as personId', 'inverse.gender as gender'])
+      .where('person_relationship.ownerId', '=', ownerId)
+      .where('inverse.gender', 'is not', null);
+
+    return this.db.selectFrom(described.unionAll(describing).as('evidence')).selectAll().execute();
+  }
+
+  /**
    * Deletes both halves of a pair, and with them — by foreign key cascade — every relationship
    * using either half.
    */

@@ -814,4 +814,21 @@ describe(RelationshipService.name, () => {
       expect(mocks.relationship.getGenderEvidence).not.toHaveBeenCalled();
     });
   });
+
+  describe('getGenders', () => {
+    it('should list only the people something is stated about', async () => {
+      mocks.relationship.getOwnedGenderEvidence.mockResolvedValue([
+        { personId: bob, gender: 'male' },
+        { personId: bob, gender: 'male' },
+        // Carol is a sister on one page and an uncle on another, so one of the two is wrong and
+        // neither is taken.
+        { personId: 'person-carol', gender: 'female' },
+        { personId: 'person-carol', gender: 'male' },
+      ]);
+
+      await expect(sut.getGenders(authStub.admin)).resolves.toEqual([{ personId: bob, gender: 'male' }]);
+
+      expect(mocks.relationship.getOwnedGenderEvidence).toHaveBeenCalledWith(ownerId);
+    });
+  });
 });
