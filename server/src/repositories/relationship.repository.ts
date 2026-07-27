@@ -237,6 +237,72 @@ export class RelationshipRepository {
   }
 
   /**
+   * Moves every relationship of a merged person onto the person they are merged into, before the
+   * merged person is deleted and the foreign key cascade would take their relationships with them.
+   *
+   * Two kinds of row cannot survive the move and are dropped instead: a relationship between the
+   * two people being merged, which would become a self-relationship, and one that duplicates a
+   * fact the surviving person already records. Symmetric rows are re-canonicalised, since the
+   * person id they are ordered by has changed.
+   */
+  async reassignRelationships(oldPersonId: string, newPersonId: string): Promise<void> {
+    await this.db.transaction().execute(async (tx) => {
+      const rows = await tx
+        .selectFrom('person_relationship')
+        .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
+        .select([
+          'person_relationship.id',
+          'person_relationship.subjectId',
+          'person_relationship.counterpartId',
+          'person_relationship.typeId',
+          'type.inverseId',
+        ])
+        .where((eb) =>
+          eb.or([
+            eb('person_relationship.subjectId', 'in', [oldPersonId, newPersonId]),
+            eb('person_relationship.counterpartId', 'in', [oldPersonId, newPersonId]),
+          ]),
+        )
+        .orderBy('person_relationship.createdAt')
+        .execute();
+
+      const seen = new Set<string>();
+      // Rows the merge does not touch keep their place, so the facts they already record win.
+      const moving: typeof rows = [];
+      for (const row of rows) {
+        if (row.subjectId === oldPersonId || row.counterpartId === oldPersonId) {
+          moving.push(row);
+        } else {
+          seen.add(factKey(row.subjectId, row.counterpartId, row.typeId, row.inverseId));
+        }
+      }
+
+      const redundant: string[] = [];
+      for (const row of moving) {
+        const moved = canonicalOrder(
+          // A type with no inverse is a broken row, never a symmetric one, so it keeps its direction.
+          { id: row.typeId, inverseId: row.inverseId ?? '' },
+          row.subjectId === oldPersonId ? newPersonId : row.subjectId,
+          row.counterpartId === oldPersonId ? newPersonId : row.counterpartId,
+        );
+
+        const key = factKey(moved.subjectId, moved.counterpartId, row.typeId, row.inverseId);
+        if (moved.subjectId === moved.counterpartId || seen.has(key)) {
+          redundant.push(row.id);
+          continue;
+        }
+
+        seen.add(key);
+        await tx.updateTable('person_relationship').set(moved).where('id', '=', row.id).execute();
+      }
+
+      if (redundant.length > 0) {
+        await tx.deleteFrom('person_relationship').where('id', 'in', redundant).execute();
+      }
+    });
+  }
+
+  /**
    * Every counterpart of a person, grouped, with the labels read from that person's end: rows
    * where they are the subject carry the type itself, rows where they are the counterpart carry
    * its inverse. This is also the shape a Venn diagram of a person's types needs.
@@ -344,6 +410,22 @@ export class RelationshipRepository {
       .execute();
   }
 }
+
+/**
+ * Identifies the fact a row records, independently of which end it is stored from. The same fact
+ * written the other way round is `(counterpart, subject, inverse)`, so the smaller of the two
+ * spellings is used for both. A row with no inverse is broken and only matches itself.
+ */
+const factKey = (subjectId: string, counterpartId: string, typeId: string, inverseId: string | null): string => {
+  const direct = `${subjectId}/${counterpartId}/${typeId}`;
+  if (!inverseId) {
+    return direct;
+  }
+
+  const mirrored = `${counterpartId}/${subjectId}/${inverseId}`;
+  const [first] = [direct, mirrored].toSorted();
+  return first;
+};
 
 const createTypePair = async (
   tx: Transaction<DB>,
