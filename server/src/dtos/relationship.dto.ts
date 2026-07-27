@@ -48,7 +48,7 @@ export class RelationshipCreateDto {
   @ValidateUUID()
   subjectId!: string;
 
-  /** The other person — the one the type describes. */
+  /** The other person: the one the type describes. */
   @ValidateUUID()
   counterpartId!: string;
 

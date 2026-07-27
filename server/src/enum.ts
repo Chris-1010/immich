@@ -862,6 +862,7 @@ export enum ApiTag {
   People = 'People',
   Plugins = 'Plugins',
   Queues = 'Queues',
+  Relationships = 'Relationships',
   Search = 'Search',
   Server = 'Server',
   Sessions = 'Sessions',
