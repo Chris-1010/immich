@@ -18,7 +18,6 @@ import {
   startOAuth,
   unlinkOAuthAccount,
   type MemoryResponseDto,
-  type PersonResponseDto,
   type ServerVersionResponseDto,
   type SharedLinkResponseDto,
   type UserResponseDto,
@@ -218,7 +217,7 @@ export const getAssetPlaybackUrl = (options: string | AssetUrlOptions) => {
 export const getProfileImageUrl = (user: UserResponseDto) =>
   createUrl(getUserProfileImagePath(user.id), { updatedAt: user.profileChangedAt });
 
-export const getPeopleThumbnailUrl = (person: PersonResponseDto, updatedAt?: string) =>
+export const getPeopleThumbnailUrl = (person: { id: string; updatedAt?: string }, updatedAt?: string) =>
   createUrl(getPeopleThumbnailPath(person.id), { updatedAt: updatedAt ?? person.updatedAt });
 
 export const getAssetJobName = derived(t, ($t) => {
