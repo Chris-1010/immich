@@ -1011,6 +1011,10 @@ export type PersonGenderResponseDto = {
 };
 export type PersonRelationshipResponseDto = {
     id: string;
+    /** What this label states about the person whose page it is read from. The type names the other
+    person, so it is the inverse that speaks for this one: a "Father" here means a son or a
+    daughter there. Null when the inverse names no gender. */
+    inverseGender: (RelationshipGender) | null;
     inverseId: string;
     inverseName: string;
     typeId: string;

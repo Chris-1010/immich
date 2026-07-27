@@ -683,6 +683,7 @@ describe(RelationshipService.name, () => {
               typeName: 'Parent',
               inverseId: childType.id,
               inverseName: 'Child',
+              inverseGender: null,
             },
           ],
         },
@@ -701,12 +702,40 @@ describe(RelationshipService.name, () => {
               typeName: 'Parent',
               inverseId: childType.id,
               inverseName: 'Child',
+              inverseGender: null,
             },
           ],
         },
       ]);
 
       expect(mocks.relationship.getRelatedPeople).toHaveBeenCalledWith(alice);
+    });
+
+    it('should carry what the label states about the person whose page it is', async () => {
+      mocks.relationship.getRelatedPeople.mockResolvedValue([
+        {
+          id: bob,
+          name: 'Bob',
+          thumbnailPath: '/bob.jpg',
+          familyRank: 10,
+          sortOrder: null,
+          relationships: [
+            // Bob is Alice's father, which is the label that makes Alice a daughter.
+            {
+              id: 'relationship-1',
+              typeId: 'type-father',
+              typeName: 'Father',
+              inverseId: 'type-daughter',
+              inverseName: 'Daughter',
+              inverseGender: 'female',
+            },
+          ],
+        },
+      ]);
+
+      const [person] = await sut.getRelatedPeople(authStub.admin, alice);
+
+      expect(person.relationships[0].inverseGender).toBe('female');
     });
 
     it('should require read access to the person', async () => {

@@ -11,6 +11,7 @@
   import Portal from '$lib/elements/Portal.svelte';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { genderRingClass } from '$lib/utils/person-gender';
   import {
     createRelationship,
     deleteRelationship,
@@ -175,6 +176,9 @@
                     typeName: type.name,
                     inverseId: type.inverseId,
                     inverseName: type.inverseName,
+                    // What the new label states is the server's to say, so the chip goes unringed
+                    // rather than keeping the old ring until the list is read back.
+                    inverseGender: null,
                   }
                 : current,
             ),
@@ -352,7 +356,13 @@
 
           <div class="flex flex-wrap place-items-center gap-2">
             {#each relatedPerson.relationships as relationship (relationship.id)}
-              <div class="flex place-items-center rounded-full bg-gray-200 dark:bg-immich-dark-gray">
+              <!-- The label names the other person, so it is its inverse that states what this
+                   page's person is: a "Father" here rings the chip pink for the daughter reading it. -->
+              <div
+                class="flex place-items-center rounded-full bg-gray-200 dark:bg-immich-dark-gray {genderRingClass(
+                  relationship.inverseGender,
+                )}"
+              >
                 <button
                   type="button"
                   class="ps-3 pe-1 py-1 text-sm font-medium text-primary"

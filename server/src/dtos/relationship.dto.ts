@@ -140,6 +140,14 @@ export class PersonRelationshipResponseDto {
   typeName!: string;
   inverseId!: string;
   inverseName!: string;
+
+  /**
+   * What this label states about the person whose page it is read from. The type names the other
+   * person, so it is the inverse that speaks for this one: a "Father" here means a son or a
+   * daughter there. Null when the inverse names no gender.
+   */
+  @ApiProperty({ enum: ['male', 'female'], enumName: 'RelationshipGender', nullable: true })
+  inverseGender!: RelationshipGender | null;
 }
 
 export class RelatedPersonResponseDto {
@@ -201,6 +209,7 @@ export function mapRelatedPerson(person: RelatedPerson): RelatedPersonResponseDt
       typeName: relationship.typeName,
       inverseId: relationship.inverseId,
       inverseName: relationship.inverseName,
+      inverseGender: relationship.inverseGender,
     })),
   };
 }

@@ -10,6 +10,7 @@ import {
   invertAgeGap,
   Orderable,
   orderRelatedPeople,
+  RelationshipGender,
   sortRankForName,
   symmetricAgeGap,
 } from 'src/utils/relationship';
@@ -58,6 +59,11 @@ export interface PersonRelationshipLabel {
   typeName: string;
   inverseId: string;
   inverseName: string;
+  /**
+   * What the inverse states about the person whose page this is read from, since the inverse is
+   * the half that describes them. Null when it names no gender.
+   */
+  inverseGender: RelationshipGender | null;
 }
 
 /** A counterpart of the person whose page is being read, with every label that person holds. */
@@ -453,6 +459,9 @@ export class RelationshipRepository {
         'type.sortRank as sortRank',
         'inverse.id as inverseId',
         'inverse.name as inverseName',
+        // The inverse is the half describing this page's person, so its gender is what it states
+        // about them.
+        'inverse.gender as inverseGender',
         'ordering.sortOrder as sortOrder',
       ])
       .where('person_relationship.subjectId', '=', personId);
@@ -477,6 +486,7 @@ export class RelationshipRepository {
         'inverse.sortRank as sortRank',
         'type.id as inverseId',
         'type.name as inverseName',
+        'type.gender as inverseGender',
         'ordering.sortOrder as sortOrder',
       ])
       .where('person_relationship.counterpartId', '=', personId);
@@ -515,6 +525,7 @@ export class RelationshipRepository {
         typeName: row.typeName,
         inverseId: row.inverseId,
         inverseName: row.inverseName,
+        inverseGender: row.inverseGender,
       });
     }
 
