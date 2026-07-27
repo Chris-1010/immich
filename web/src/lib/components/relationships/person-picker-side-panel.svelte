@@ -77,6 +77,10 @@
       <div class="flex w-full justify-center">
         <LoadingSpinner />
       </div>
+    {:else if people.length === 0}
+      <!-- Nobody is offered at all, rather than nobody matching the search: everyone available is
+           already related to this person. -->
+      <p class="mt-4 text-center">{$t('relationship_all_people_assigned')}</p>
     {:else if matchingPeople.length === 0}
       <p class="mt-4 text-center">{$t('no_people_found')}</p>
     {:else}

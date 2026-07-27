@@ -1024,6 +1024,11 @@ export type CoAppearanceResponseDto = {
     sharedAssets: number;
     thumbnailPath: string;
 };
+export type RelationshipOrderUpdateDto = {
+    /** Everyone on the page, in the order they should appear. Position in the array is the position
+    on the page. Anyone omitted goes back to being placed by relationship type. */
+    relatedPersonIds: string[];
+};
 export type RelationshipTypeResponseDto = {
     id: string;
     /** Equal to `id` when the type is symmetric. */
@@ -3848,6 +3853,19 @@ export function getCoAppearances({ id }: {
     }>(`/relationships/people/${encodeURIComponent(id)}/co-appearances`, {
         ...opts
     }));
+}
+/**
+ * Reorder a person's relationships
+ */
+export function setRelatedPeopleOrder({ id, relationshipOrderUpdateDto }: {
+    id: string;
+    relationshipOrderUpdateDto: RelationshipOrderUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/relationships/people/${encodeURIComponent(id)}/order`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: relationshipOrderUpdateDto
+    })));
 }
 /**
  * List relationship types

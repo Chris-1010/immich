@@ -8,6 +8,7 @@ import {
   mapRelationshipType,
   RelatedPersonResponseDto,
   RelationshipCreateDto,
+  RelationshipOrderUpdateDto,
   RelationshipResponseDto,
   RelationshipTypeCreateDto,
   RelationshipTypeResponseDto,
@@ -118,7 +119,24 @@ export class RelationshipService extends BaseService {
     return people.map((person) => mapRelatedPerson(person));
   }
 
-  /** Candidate counterparts, most shared photos first. Ordering only — nothing is filtered out. */
+  /**
+   * Records the order the owner dragged a person's page into. The order belongs to that page
+   * alone: arranging Alice's page says nothing about where Alice sits on anyone else's.
+   */
+  async setRelatedPeopleOrder(auth: AuthDto, personId: string, dto: RelationshipOrderUpdateDto): Promise<void> {
+    await this.requireAccess({ auth, permission: Permission.PersonUpdate, ids: [personId] });
+
+    const relatedPersonIds = [...new Set(dto.relatedPersonIds)];
+    if (relatedPersonIds.includes(personId)) {
+      throw new BadRequestException('A person cannot be ordered within their own list');
+    }
+
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: relatedPersonIds });
+
+    await this.relationshipRepository.setRelatedPeopleOrder(personId, relatedPersonIds);
+  }
+
+  /** Candidate counterparts, most shared photos first. Already-related people are left out. */
   async getCoAppearances(auth: AuthDto, personId: string): Promise<CoAppearanceResponseDto[]> {
     await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [personId] });
 

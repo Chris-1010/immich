@@ -3,6 +3,7 @@ import { Kysely, sql, Transaction } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
 import { DB } from 'src/schema';
+import { Orderable, orderRelatedPeople, sortRankForName } from 'src/utils/relationship';
 
 /**
  * The starter set seeded for an owner who has no types yet. Each entry is one pair; an entry
@@ -42,7 +43,7 @@ export interface PersonRelationshipLabel {
 }
 
 /** A counterpart of the person whose page is being read, with every label that person holds. */
-export interface RelatedPerson {
+export interface RelatedPerson extends Orderable {
   id: string;
   name: string;
   thumbnailPath: string;
@@ -306,6 +307,9 @@ export class RelationshipRepository {
    * Every counterpart of a person, grouped, with the labels read from that person's end: rows
    * where they are the subject carry the type itself, rows where they are the counterpart carry
    * its inverse. This is also the shape a Venn diagram of a person's types needs.
+   *
+   * The people come back in the order the page should render them — see
+   * {@link orderRelatedPeople} — which is why the saved manual order is joined in here.
    */
   @GenerateSql({ params: [DummyValue.UUID] })
   async getRelatedPeople(personId: string): Promise<RelatedPerson[]> {
@@ -314,6 +318,11 @@ export class RelationshipRepository {
       .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
       .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
       .innerJoin('person', 'person.id', 'person_relationship.counterpartId')
+      .leftJoin('person_relationship_order as ordering', (join) =>
+        join
+          .onRef('ordering.relatedPersonId', '=', 'person.id')
+          .on('ordering.personId', '=', personId),
+      )
       .select([
         'person_relationship.id',
         'person.id as personId',
@@ -321,8 +330,10 @@ export class RelationshipRepository {
         'person.thumbnailPath',
         'type.id as typeId',
         'type.name as typeName',
+        'type.sortRank as sortRank',
         'inverse.id as inverseId',
         'inverse.name as inverseName',
+        'ordering.sortOrder as sortOrder',
       ])
       .where('person_relationship.subjectId', '=', personId);
 
@@ -331,6 +342,11 @@ export class RelationshipRepository {
       .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
       .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
       .innerJoin('person', 'person.id', 'person_relationship.subjectId')
+      .leftJoin('person_relationship_order as ordering', (join) =>
+        join
+          .onRef('ordering.relatedPersonId', '=', 'person.id')
+          .on('ordering.personId', '=', personId),
+      )
       .select([
         'person_relationship.id',
         'person.id as personId',
@@ -339,15 +355,19 @@ export class RelationshipRepository {
         // Read from the far end, so the label is the inverse and its own inverse is the stored type.
         'inverse.id as typeId',
         'inverse.name as typeName',
+        // The rank follows the label being shown, not the stored type.
+        'inverse.sortRank as sortRank',
         'type.id as inverseId',
         'type.name as inverseName',
+        'ordering.sortOrder as sortOrder',
       ])
       .where('person_relationship.counterpartId', '=', personId);
 
     const rows = await this.db
       .selectFrom(asSubject.unionAll(asCounterpart).as('relationship'))
       .selectAll()
-      .orderBy('name')
+      // Orders the chips within a person. The people themselves are ordered afterwards.
+      .orderBy('sortRank')
       .orderBy('typeName')
       .orderBy('inverseName')
       .execute();
@@ -358,7 +378,15 @@ export class RelationshipRepository {
     for (const row of rows) {
       let person = byPersonId.get(row.personId);
       if (!person) {
-        person = { id: row.personId, name: row.name, thumbnailPath: row.thumbnailPath, relationships: [] };
+        person = {
+          id: row.personId,
+          name: row.name,
+          thumbnailPath: row.thumbnailPath,
+          // The first row for a person carries their lowest rank, because rows arrive ranked.
+          familyRank: row.sortRank,
+          sortOrder: row.sortOrder,
+          relationships: [],
+        };
         byPersonId.set(row.personId, person);
         people.push(person);
       }
@@ -372,7 +400,33 @@ export class RelationshipRepository {
       });
     }
 
-    return people;
+    return orderRelatedPeople(people);
+  }
+
+  /**
+   * Replaces the manual ordering of a person's page. The list is stored as given — position in
+   * the array is the position on the page — and anyone left out loses their saved position and
+   * falls back to the default rank.
+   */
+  async setRelatedPeopleOrder(personId: string, relatedPersonIds: string[]): Promise<void> {
+    await this.db.transaction().execute(async (tx) => {
+      await tx.deleteFrom('person_relationship_order').where('personId', '=', personId).execute();
+
+      if (relatedPersonIds.length === 0) {
+        return;
+      }
+
+      await tx
+        .insertInto('person_relationship_order')
+        .values(
+          relatedPersonIds.map((relatedPersonId, sortOrder) => ({
+            personId,
+            relatedPersonId,
+            sortOrder,
+          })),
+        )
+        .execute();
+    });
   }
 
   /**
@@ -457,7 +511,7 @@ const createTypePair = async (
 ): Promise<RelationshipTypePair> => {
   const type = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name })
+    .values({ ownerId, name, sortRank: sortRankForName(name) })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
@@ -470,7 +524,7 @@ const createTypePair = async (
 
   const inverse = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name: inverseName })
+    .values({ ownerId, name: inverseName, sortRank: sortRankForName(inverseName) })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 

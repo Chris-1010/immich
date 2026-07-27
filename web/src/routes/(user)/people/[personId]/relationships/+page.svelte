@@ -14,6 +14,7 @@
     createRelationship,
     deleteRelationship,
     getRelatedPeople,
+    setRelatedPeopleOrder,
     updateRelationship,
     type CoAppearanceResponseDto,
     type PersonRelationshipResponseDto,
@@ -21,7 +22,7 @@
     type RelationshipTypeResponseDto,
   } from '@immich/sdk';
   import { Button, Icon } from '@immich/ui';
-  import { mdiArrowLeft, mdiClose, mdiPlus } from '@mdi/js';
+  import { mdiArrowLeft, mdiClose, mdiDragHorizontalVariant, mdiPlus } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -152,6 +153,84 @@
     await refresh();
   };
 
+  /** The person currently being dragged. The list reorders live underneath them. */
+  let draggingId: string | undefined = $state();
+
+  const persistOrder = async () => {
+    const ordered = relatedPeople.map(({ id }) => id);
+
+    try {
+      await setRelatedPeopleOrder({
+        id: personPage.getPerson().id,
+        relationshipOrderUpdateDto: { relatedPersonIds: ordered },
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_relationship_order'));
+      // The order on screen is no longer the stored one, so take the stored one back.
+      await refresh();
+    }
+  };
+
+  const moveTo = (from: number, to: number) => {
+    if (to < 0 || to >= relatedPeople.length || from === to) {
+      return false;
+    }
+
+    const reordered = [...relatedPeople];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    relatedPeople = reordered;
+
+    return true;
+  };
+
+  const handleDragStart = (event: DragEvent, relatedPerson: RelatedPersonResponseDto) => {
+    draggingId = relatedPerson.id;
+
+    // Firefox does not start a drag at all unless something is on the transfer.
+    event.dataTransfer?.setData('text/plain', relatedPerson.id);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  };
+
+  const handleDragOver = (event: DragEvent, index: number) => {
+    if (draggingId === undefined) {
+      return;
+    }
+
+    // Without this the browser refuses the drop and animates the row back.
+    event.preventDefault();
+
+    moveTo(
+      relatedPeople.findIndex(({ id }) => id === draggingId),
+      index,
+    );
+  };
+
+  const handleDragEnd = async () => {
+    if (draggingId === undefined) {
+      return;
+    }
+
+    draggingId = undefined;
+    await persistOrder();
+  };
+
+  const handleMoveKey = async (event: KeyboardEvent, index: number) => {
+    const to = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : undefined;
+    if (to === undefined) {
+      return;
+    }
+
+    // Keep the arrow keys from scrolling the page out from under the row being moved.
+    event.preventDefault();
+
+    if (moveTo(index, to)) {
+      await persistOrder();
+    }
+  };
+
   const handleRemove = async (relatedPerson: RelatedPersonResponseDto, relationship: PersonRelationshipResponseDto) => {
     const previous = relatedPeople;
 
@@ -191,8 +270,27 @@
     <EmptyPlaceholder fullWidth title={$t('no_relationships')} text={$t('no_relationships_message')} />
   {:else}
     <ul class="flex flex-col gap-2">
-      {#each relatedPeople as relatedPerson (relatedPerson.id)}
-        <li class="flex flex-wrap place-items-center gap-x-4 gap-y-2 rounded-2xl p-2 hover:bg-subtle">
+      {#each relatedPeople as relatedPerson, index (relatedPerson.id)}
+        <li
+          class="flex flex-wrap place-items-center gap-x-4 gap-y-2 rounded-2xl p-2 hover:bg-subtle {draggingId ===
+          relatedPerson.id
+            ? 'opacity-50'
+            : ''}"
+          ondragover={(event) => handleDragOver(event, index)}
+        >
+          <button
+            type="button"
+            class="shrink-0 cursor-grab rounded-full p-1 text-gray-500 dark:text-gray-400 hover:text-primary active:cursor-grabbing"
+            draggable="true"
+            title={$t('relationship_reorder_hint')}
+            aria-label={$t('relationship_reorder')}
+            ondragstart={(event) => handleDragStart(event, relatedPerson)}
+            ondragend={handleDragEnd}
+            onkeydown={(event) => handleMoveKey(event, index)}
+          >
+            <Icon icon={mdiDragHorizontalVariant} size="1.25em" aria-hidden />
+          </button>
+
           <a href="{AppRoute.PEOPLE}/{relatedPerson.id}" class="flex min-w-48 grow place-items-center gap-3">
             <ImageThumbnail
               circle

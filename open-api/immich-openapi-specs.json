@@ -8490,7 +8490,7 @@
     },
     "/relationships/people/{id}/co-appearances": {
       "get": {
-        "description": "Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. This is an ordering only: nobody is filtered out except the person themselves.",
+        "description": "Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. The person themselves and anyone they are already related to are left out, so every result is a candidate for a new relationship.",
         "operationId": "getCoAppearances",
         "parameters": [
           {
@@ -8544,6 +8544,65 @@
           }
         ],
         "x-immich-permission": "person.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/people/{id}/order": {
+      "put": {
+        "description": "Record the order the people on this page should be listed in. The order applies to this page only — it does not change how this person is listed on anyone else's. Anyone omitted goes back to being ordered by relationship type.",
+        "operationId": "setRelatedPeopleOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipOrderUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Reorder a person's relationships",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.update",
         "x-immich-state": "Alpha"
       }
     },
@@ -19613,6 +19672,22 @@
           "counterpartId",
           "subjectId",
           "typeId"
+        ],
+        "type": "object"
+      },
+      "RelationshipOrderUpdateDto": {
+        "properties": {
+          "relatedPersonIds": {
+            "description": "Everyone on the page, in the order they should appear. Position in the array is the position\non the page. Anyone omitted goes back to being placed by relationship type.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relatedPersonIds"
         ],
         "type": "object"
       },

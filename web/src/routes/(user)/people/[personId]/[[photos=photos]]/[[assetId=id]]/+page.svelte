@@ -192,7 +192,9 @@
 <!-- The app bars and the full screen selectors are positioned against the viewport, so they are
      rendered outside the layout's person page container. -->
 <Portal target="body">
-  <header>
+  <!-- The asset viewer is a full screen overlay with its own controls. This header is portalled to
+       the end of the body, so it would otherwise paint on top of it. -->
+  <header class={$showAssetViewer ? 'hidden' : undefined}>
     {#if assetInteraction.selectionActive}
       <AssetSelectControlBar
         assets={assetInteraction.selectedAssets}

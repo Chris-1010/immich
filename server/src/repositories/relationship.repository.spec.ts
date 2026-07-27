@@ -153,8 +153,10 @@ describe(RelationshipRepository.name, () => {
             thumbnailPath: '/bob.jpg',
             typeId: 'type-parent',
             typeName: 'Parent',
+            sortRank: 10,
             inverseId: 'type-child',
             inverseName: 'Child',
+            sortOrder: null,
           },
           {
             id: 'relationship-2',
@@ -163,8 +165,10 @@ describe(RelationshipRepository.name, () => {
             thumbnailPath: '/bob.jpg',
             typeId: 'type-work',
             typeName: 'Work',
+            sortRank: 1000,
             inverseId: 'type-work',
             inverseName: 'Work',
+            sortOrder: null,
           },
           {
             id: 'relationship-3',
@@ -173,8 +177,10 @@ describe(RelationshipRepository.name, () => {
             thumbnailPath: '/carol.jpg',
             typeId: 'type-sibling',
             typeName: 'Sibling',
+            sortRank: 30,
             inverseId: 'type-sibling',
             inverseName: 'Sibling',
+            sortOrder: null,
           },
         ],
       ]);
@@ -184,6 +190,9 @@ describe(RelationshipRepository.name, () => {
           id: 'person-b',
           name: 'Bob',
           thumbnailPath: '/bob.jpg',
+          // Bob's best rank is the parent chip, so he outranks Carol despite sorting after her.
+          familyRank: 10,
+          sortOrder: null,
           relationships: [
             {
               id: 'relationship-1',
@@ -205,6 +214,8 @@ describe(RelationshipRepository.name, () => {
           id: 'person-c',
           name: 'Carol',
           thumbnailPath: '/carol.jpg',
+          familyRank: 30,
+          sortOrder: null,
           relationships: [
             {
               id: 'relationship-3',
@@ -216,6 +227,51 @@ describe(RelationshipRepository.name, () => {
           ],
         },
       ]);
+    });
+
+    it('should list the people in the order they were dragged into', async () => {
+      const row = (personId: string, name: string, sortRank: number, sortOrder: number | null) => ({
+        id: `relationship-${personId}`,
+        personId,
+        name,
+        thumbnailPath: `/${name}.jpg`,
+        typeId: 'type-x',
+        typeName: 'X',
+        sortRank,
+        inverseId: 'type-x',
+        inverseName: 'X',
+        sortOrder,
+      });
+
+      // Carol is family and Bob is not, so the default order would be the other way round.
+      const { sut } = newRepository([[row('person-b', 'Bob', 1000, 0), row('person-c', 'Carol', 10, 1)]]);
+
+      const people = await sut.getRelatedPeople('person-a');
+
+      expect(people.map(({ name }) => name)).toEqual(['Bob', 'Carol']);
+    });
+  });
+
+  describe('setRelatedPeopleOrder', () => {
+    it('should replace the whole ordering of the page', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.setRelatedPeopleOrder('person-a', ['person-c', 'person-b']);
+
+      const [remove, insert] = statements.map((statement) => [statement.sql.split(' ')[0], statement.parameters]);
+      // The old order goes first, so anyone dropped from the list stops having a saved position.
+      expect(remove).toEqual(['delete', ['person-a']]);
+      // Position in the list is the stored order.
+      expect(insert).toEqual(['insert', ['person-a', 'person-c', 0, 'person-a', 'person-b', 1]]);
+    });
+
+    it('should only clear when the list is empty', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.setRelatedPeopleOrder('person-a', []);
+
+      expect(statements).toHaveLength(1);
+      expect(statements[0].sql.split(' ')[0]).toEqual('delete');
     });
   });
 

@@ -68,6 +68,15 @@ export class RelationshipUpdateDto {
   typeId!: string;
 }
 
+export class RelationshipOrderUpdateDto {
+  /**
+   * Everyone on the page, in the order they should appear. Position in the array is the position
+   * on the page. Anyone omitted goes back to being placed by relationship type.
+   */
+  @ValidateUUID({ each: true })
+  relatedPersonIds!: string[];
+}
+
 /** A stored relationship, in the direction it is stored in. */
 export class RelationshipResponseDto {
   id!: string;

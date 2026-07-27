@@ -455,6 +455,8 @@ describe(RelationshipService.name, () => {
           id: bob,
           name: 'Bob',
           thumbnailPath: '/bob.jpg',
+          familyRank: 10,
+          sortOrder: null,
           relationships: [
             {
               id: 'relationship-1',
@@ -467,6 +469,7 @@ describe(RelationshipService.name, () => {
         },
       ]);
 
+      // The ordering fields are how the repository sorts the list; they are not part of the response.
       await expect(sut.getRelatedPeople(authStub.admin, alice)).resolves.toEqual([
         {
           id: bob,
@@ -493,6 +496,63 @@ describe(RelationshipService.name, () => {
       await expect(sut.getRelatedPeople(authStub.admin, alice)).rejects.toBeInstanceOf(BadRequestException);
 
       expect(mocks.relationship.getRelatedPeople).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setRelatedPeopleOrder', () => {
+    const carol = 'person-carol';
+
+    beforeEach(() => {
+      mocks.relationship.setRelatedPeopleOrder.mockResolvedValue();
+    });
+
+    it('should store the order exactly as given', async () => {
+      await sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [carol, bob] });
+
+      expect(mocks.relationship.setRelatedPeopleOrder).toHaveBeenCalledWith(alice, [carol, bob]);
+    });
+
+    it('should keep only the first mention of a repeated person', async () => {
+      await sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [carol, bob, carol] });
+
+      expect(mocks.relationship.setRelatedPeopleOrder).toHaveBeenCalledWith(alice, [carol, bob]);
+    });
+
+    it('should clear the order when given an empty list', async () => {
+      await sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [] });
+
+      expect(mocks.relationship.setRelatedPeopleOrder).toHaveBeenCalledWith(alice, []);
+    });
+
+    it('should reject a list containing the person whose page it is', async () => {
+      await expect(
+        sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [bob, alice] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.relationship.setRelatedPeopleOrder).not.toHaveBeenCalled();
+    });
+
+    it('should require update access to the person whose page it is', async () => {
+      mocks.access.person.checkOwnerAccess.mockResolvedValue(new Set());
+
+      await expect(
+        sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [bob] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.relationship.setRelatedPeopleOrder).not.toHaveBeenCalled();
+    });
+
+    it('should require access to everyone being ordered', async () => {
+      // The page itself is reachable, but one of the people listed belongs to somebody else.
+      mocks.access.person.checkOwnerAccess.mockImplementation((_ownerId, ids) =>
+        Promise.resolve(new Set([...ids].filter((id) => id !== bob))),
+      );
+
+      await expect(
+        sut.setRelatedPeopleOrder(authStub.admin, alice, { relatedPersonIds: [bob] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.relationship.setRelatedPeopleOrder).not.toHaveBeenCalled();
     });
   });
 

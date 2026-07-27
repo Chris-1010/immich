@@ -6,6 +6,7 @@ import {
   CoAppearanceResponseDto,
   RelatedPersonResponseDto,
   RelationshipCreateDto,
+  RelationshipOrderUpdateDto,
   RelationshipResponseDto,
   RelationshipTypeCreateDto,
   RelationshipTypeResponseDto,
@@ -110,12 +111,29 @@ export class RelationshipController {
     return this.service.getRelatedPeople(auth, id);
   }
 
+  @Put('people/:id/order')
+  @Authenticated({ permission: Permission.PersonUpdate })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Endpoint({
+    summary: "Reorder a person's relationships",
+    description:
+      'Record the order the people on this page should be listed in. The order applies to this page only — it does not change how this person is listed on anyone else\'s. Anyone omitted goes back to being ordered by relationship type.',
+    history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
+  })
+  setRelatedPeopleOrder(
+    @Auth() auth: AuthDto,
+    @Param() { id }: UUIDParamDto,
+    @Body() dto: RelationshipOrderUpdateDto,
+  ): Promise<void> {
+    return this.service.setRelatedPeopleOrder(auth, id, dto);
+  }
+
   @Get('people/:id/co-appearances')
   @Authenticated({ permission: Permission.PersonRead })
   @Endpoint({
     summary: 'List candidate counterparts',
     description:
-      'Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. This is an ordering only: nobody is filtered out except the person themselves.',
+      "Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. The person themselves and anyone they are already related to are left out, so every result is a candidate for a new relationship.",
     history: new HistoryBuilder().added('v2.4.1').alpha('v2.4.1'),
   })
   getCoAppearances(@Auth() auth: AuthDto, @Param() { id }: UUIDParamDto): Promise<CoAppearanceResponseDto[]> {
