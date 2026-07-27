@@ -1071,6 +1071,12 @@ describe(PersonService.name, () => {
         personStub.primaryPerson.id,
       );
 
+      // The merged person's relationships have to be moved before the row is deleted and the
+      // foreign key cascade takes them with it.
+      expect(mocks.relationship.reassignRelationships.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.person.delete.mock.invocationCallOrder[0],
+      );
+
       expect(mocks.access.person.checkOwnerAccess).toHaveBeenCalledWith(authStub.admin.user.id, new Set(['person-1']));
     });
 
