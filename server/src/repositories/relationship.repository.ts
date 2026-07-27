@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Kysely, sql, Transaction } from 'kysely';
+import { Kysely, RawBuilder, sql, Transaction } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
 import { DB } from 'src/schema';
@@ -22,9 +22,18 @@ import {
  * and Uncle/Niece are two distinct pairs.
  */
 export const STARTER_RELATIONSHIP_TYPES: Array<[name: string, inverseName: string]> = [
-  ['Parent', 'Child'],
-  ['Grandparent', 'Grandchild'],
-  ['Sibling', 'Sibling'],
+  ['Husband', 'Wife'],
+  ['Father', 'Son'],
+  ['Father', 'Daughter'],
+  ['Mother', 'Son'],
+  ['Mother', 'Daughter'],
+  ['Grandfather', 'Grandson'],
+  ['Grandfather', 'Granddaughter'],
+  ['Grandmother', 'Grandson'],
+  ['Grandmother', 'Granddaughter'],
+  ['Brother', 'Brother'],
+  ['Brother', 'Sister'],
+  ['Sister', 'Sister'],
   ['Cousin', 'Cousin'],
   ['Uncle', 'Nephew'],
   ['Uncle', 'Niece'],
@@ -64,6 +73,12 @@ export interface CoAppearance {
   name: string;
   thumbnailPath: string;
   sharedAssets: number;
+  /**
+   * How many of the subject's existing counterparts this person is already related to. Sharing
+   * no photos with the subject says nothing about being family — the person nobody photographs
+   * with is still somebody's spouse — so the family they are visibly attached to speaks for them.
+   */
+  mutualCounterparts: number;
 }
 
 /**
@@ -508,9 +523,14 @@ export class RelationshipRepository {
   }
 
   /**
-   * Named, visible people ranked by how many assets they share with the subject. Everyone the
-   * subject is not already linked to is returned — people sharing nothing sort last — so a picker
-   * can still offer them.
+   * Named, visible people ranked by how many assets they share with the subject, then by how much
+   * of the subject's existing family they are already attached to. Everyone the subject is not
+   * already linked to is returned, so a picker can still offer the rest.
+   *
+   * The second rank is what surfaces the relatives who are never in the photos: if the subject's
+   * counterparts are Alice and Corey and both of them are related to Max, Max is the likeliest
+   * person the subject is about to be related to, whether or not he has ever been photographed
+   * with them.
    *
    * This is deliberately not the face-embedding ordering used for merge suggestions: people who
    * look alike are the least likely to be related.
@@ -518,6 +538,19 @@ export class RelationshipRepository {
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
   getCoAppearances(ownerId: string, personId: string): Promise<CoAppearance[]> {
     const sharedAssets = sql<number>`count(distinct "subject_face"."assetId")::int`;
+
+    // A relationship is stored once and read from both ends, so each side of it has to be unfolded
+    // before the two sets of counterparts can be intersected.
+    const counterpartsOf = (id: RawBuilder<string> | string) => sql`
+      select case when "link"."subjectId" = ${id} then "link"."counterpartId" else "link"."subjectId" end
+      from "person_relationship" as "link"
+      where "link"."subjectId" = ${id} or "link"."counterpartId" = ${id}
+    `;
+
+    const mutualCounterparts = sql<number>`(
+      select count(*)::int from (${counterpartsOf(sql.ref('person.id'))}) as "theirs" ("id")
+      where "theirs"."id" in (${counterpartsOf(personId)})
+    )`;
 
     return (
       this.db
@@ -536,6 +569,7 @@ export class RelationshipRepository {
         )
         .select(['person.id', 'person.name', 'person.thumbnailPath'])
         .select(sharedAssets.as('sharedAssets'))
+        .select(mutualCounterparts.as('mutualCounterparts'))
         .where('person.ownerId', '=', ownerId)
         .where('person.id', '!=', personId)
         .where('person.isHidden', '=', false)
@@ -565,6 +599,7 @@ export class RelationshipRepository {
         )
         .groupBy('person.id')
         .orderBy(sharedAssets, 'desc')
+        .orderBy(mutualCounterparts, 'desc')
         .orderBy('person.name')
         .execute()
     );

@@ -778,8 +778,8 @@ describe(RelationshipService.name, () => {
   describe('getCoAppearances', () => {
     it('should return candidate counterparts ranked by shared photos', async () => {
       mocks.relationship.getCoAppearances.mockResolvedValue([
-        { id: bob, name: 'Bob', thumbnailPath: '/bob.jpg', sharedAssets: 12 },
-        { id: 'person-carol', name: 'Carol', thumbnailPath: '/carol.jpg', sharedAssets: 0 },
+        { id: bob, name: 'Bob', thumbnailPath: '/bob.jpg', sharedAssets: 12, mutualCounterparts: 0 },
+        { id: 'person-carol', name: 'Carol', thumbnailPath: '/carol.jpg', sharedAssets: 0, mutualCounterparts: 2 },
       ]);
 
       await expect(sut.getCoAppearances(authStub.admin, alice)).resolves.toEqual([

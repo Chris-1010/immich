@@ -1,6 +1,7 @@
 import {
   ageGapBetween,
   ageGapForName,
+  DEFAULT_SORT_RANK,
   filterTypesByGender,
   genderForName,
   inferGender,
@@ -28,19 +29,38 @@ const names = (people: { name: string }[]) => people.map(({ name }) => name);
 
 describe(sortRankForName.name, () => {
   it('should rank close family ahead of everything else', () => {
-    expect(sortRankForName('Wife')).toBeLessThan(sortRankForName('Parent'));
-    expect(sortRankForName('Parent')).toBeLessThan(sortRankForName('Child'));
-    expect(sortRankForName('Child')).toBeLessThan(sortRankForName('Sibling'));
-    expect(sortRankForName('Sibling')).toBeLessThan(sortRankForName('Grandparent'));
-    expect(sortRankForName('Grandparent')).toBeLessThan(sortRankForName('Uncle'));
+    expect(sortRankForName('Wife')).toBeLessThan(sortRankForName('Mother'));
+    expect(sortRankForName('Mother')).toBeLessThan(sortRankForName('Daughter'));
+    expect(sortRankForName('Daughter')).toBeLessThan(sortRankForName('Sister'));
+    expect(sortRankForName('Sister')).toBeLessThan(sortRankForName('Grandmother'));
+    expect(sortRankForName('Grandmother')).toBeLessThan(sortRankForName('Uncle'));
     expect(sortRankForName('Uncle')).toBeLessThan(sortRankForName('Cousin'));
     expect(sortRankForName('Cousin')).toBeLessThan(sortRankForName('Work'));
   });
 
-  it('should give the two halves of a gendered pair the same rank', () => {
+  it('should give the two genders of a tier the same rank', () => {
     expect(sortRankForName('Aunt')).toEqual(sortRankForName('Uncle'));
     expect(sortRankForName('Niece')).toEqual(sortRankForName('Nephew'));
     expect(sortRankForName('Wife')).toEqual(sortRankForName('Husband'));
+    expect(sortRankForName('Son')).toEqual(sortRankForName('Daughter'));
+    expect(sortRankForName('Father')).toEqual(sortRankForName('Mother'));
+  });
+
+  it('should rank a name by the family term inside it', () => {
+    expect(sortRankForName('Brother-in-law')).toEqual(sortRankForName('Brother'));
+    expect(sortRankForName('Stepmother')).toEqual(sortRankForName('Mother'));
+    expect(sortRankForName('Godson')).toEqual(sortRankForName('Son'));
+  });
+
+  it('should read the longest term in a name, so a grandson is not a son', () => {
+    expect(sortRankForName('Grandson')).toBeGreaterThan(sortRankForName('Son'));
+    expect(sortRankForName('Granddaughter')).toEqual(sortRankForName('Grandson'));
+    expect(sortRankForName('Grandmother')).toBeGreaterThan(sortRankForName('Mother'));
+  });
+
+  it('should give a neutral term the default rank, since the vocabulary is gendered', () => {
+    expect(sortRankForName('Parent')).toEqual(DEFAULT_SORT_RANK);
+    expect(sortRankForName('Sibling')).toEqual(DEFAULT_SORT_RANK);
   });
 
   it('should give an invented type the default rank', () => {
@@ -159,7 +179,12 @@ const suggestedNames = (types: Array<{ name: string; suggested: boolean }>) =>
 
 describe('ageGapForName', () => {
   it('should give a known family type its seeded range', () => {
-    expect(ageGapForName('Parent')).toEqual({ minAgeGap: 15, maxAgeGap: 60 });
+    expect(ageGapForName('Mother')).toEqual({ minAgeGap: 15, maxAgeGap: 60 });
+  });
+
+  it('should give a range to the family term inside a name', () => {
+    expect(ageGapForName('Stepfather')).toEqual(ageGapForName('Father'));
+    expect(ageGapForName('Grandson')).toEqual({ minAgeGap: -100, maxAgeGap: -35 });
   });
 
   it('should give an invented type no range at all', () => {
@@ -287,6 +312,13 @@ describe('genderForName', () => {
   it('should read a gender off a name that carries one', () => {
     expect(genderForName('Nephew')).toBe('male');
     expect(genderForName('Aunt')).toBe('female');
+  });
+
+  it('should read the gender off the family term inside a name', () => {
+    expect(genderForName('Brother-in-law')).toBe('male');
+    expect(genderForName('Stepdaughter')).toBe('female');
+    expect(genderForName('Half sister')).toBe('female');
+    expect(genderForName('Godson')).toBe('male');
   });
 
   it('should read nothing off a name that carries nothing', () => {

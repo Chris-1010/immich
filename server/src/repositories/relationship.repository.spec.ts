@@ -278,13 +278,13 @@ describe(RelationshipRepository.name, () => {
 
   describe('createTypePair', () => {
     it('should store the opposite half of a seeded range negated', async () => {
-      const { sut, statements } = newRepository([[{ id: 'type-parent' }], [{ id: 'type-child' }]]);
+      const { sut, statements } = newRepository([[{ id: 'type-mother' }], [{ id: 'type-son' }]]);
 
-      await sut.createTypePair({ ownerId: 'owner-1', name: 'Parent', inverseName: 'Child' });
+      await sut.createTypePair({ ownerId: 'owner-1', name: 'Mother', inverseName: 'Son' });
 
       const inserts = statements.filter((statement) => statement.sql.startsWith('insert'));
       const [primary, inverse] = inserts;
-      // "Parent" expects the counterpart to be the older one, so "Child" expects the reverse.
+      // "Mother" expects the counterpart to be the older one, so "Son" expects the reverse.
       expect(primary.parameters).toContain(15);
       expect(primary.parameters).toContain(60);
       expect(inverse.parameters).toContain(-60);
@@ -379,6 +379,18 @@ describe(RelationshipRepository.name, () => {
       expect(exclusion).toContain('"person_relationship"."subjectId" = $');
       expect(exclusion).toContain('"person_relationship"."counterpartId" = $');
       expect(exclusion).toContain('"person"."id"');
+    });
+
+    it('should rank shared photos first and shared family second', async () => {
+      const { sut, statements } = newRepository([[]]);
+
+      await sut.getCoAppearances('owner-1', 'person-a');
+
+      const [, ordering] = statements[0].sql.split('order by');
+      const [byPhotos, byFamily] = ordering.split('desc');
+      expect(byPhotos).toContain('"subject_face"."assetId"');
+      expect(byFamily).toContain('"person_relationship"');
+      expect(ordering.trimEnd()).toMatch(/"person"\."name"$/);
     });
   });
 

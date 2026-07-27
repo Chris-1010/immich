@@ -1,20 +1,50 @@
 /**
+ * Reads a name for the kinship term it contains rather than for what it is exactly, so the
+ * variations an owner will actually type — "Brother-in-law", "Stepbrother", "Half brother" — are
+ * all recognised as the brother they name, without every variation needing its own entry.
+ *
+ * The longest matching term wins, which is what stops "Grandson" being read as a son and
+ * "Grandmother" as a mother. A name matching nothing is left to the caller's fallback.
+ */
+const readFamilyTerm = <T>(terms: Record<string, T>, name: string): T | undefined => {
+  const haystack = name.trim().toLowerCase();
+
+  let longest: string | undefined;
+  for (const term of Object.keys(terms)) {
+    if (haystack.includes(term.toLowerCase()) && (longest === undefined || term.length > longest.length)) {
+      longest = term;
+    }
+  }
+
+  return longest === undefined ? undefined : terms[longest];
+};
+
+/**
  * Where a relationship type sorts on a person's page before anyone has dragged anything.
  *
  * Ranks are per type half, not per pair, because the label shown on a page describes the other
- * person: a grandparent's page shows "Grandchild", so both halves need their own place. Sparse
+ * person: a grandmother's page shows "Grandson", so both halves need their own place. Sparse
  * numbering leaves room to slot a rank in between later without renumbering.
+ *
+ * The terms are gendered wherever English has a gendered word, since a type that names a gender is
+ * a type the picker can rule out. "Cousin" stays because English offers nothing else. The two
+ * genders of a tier always rank together — a son and a daughter are equally children.
  */
 export const FAMILY_SORT_RANKS: Record<string, number> = {
   // A spouse heads the list: they are the one person on a page who is family by choice rather
   // than by descent, so they sit above the tree rather than anywhere within it.
   Husband: 5,
   Wife: 5,
-  Parent: 10,
-  Child: 20,
-  Sibling: 30,
-  Grandparent: 40,
-  Grandchild: 50,
+  Father: 10,
+  Mother: 10,
+  Son: 20,
+  Daughter: 20,
+  Brother: 30,
+  Sister: 30,
+  Grandfather: 40,
+  Grandmother: 40,
+  Grandson: 50,
+  Granddaughter: 50,
   Aunt: 60,
   Uncle: 60,
   Niece: 70,
@@ -27,14 +57,14 @@ export const DEFAULT_SORT_RANK = 1000;
 
 /**
  * The rank a type gets from its name. Applied when a type is created as well as when the starter
- * set is seeded, so an owner who deletes "Parent" and recreates it gets the family placement back.
+ * set is seeded, so an owner who deletes "Mother" and recreates it gets the family placement back.
  */
-export const sortRankForName = (name: string): number => FAMILY_SORT_RANKS[name.trim()] ?? DEFAULT_SORT_RANK;
+export const sortRankForName = (name: string): number => readFamilyTerm(FAMILY_SORT_RANKS, name) ?? DEFAULT_SORT_RANK;
 
 /** The part of a related person the ordering rules care about. */
 export interface Orderable {
   name: string;
-  /** The lowest rank among the labels this person holds: one "Parent" chip puts them with parents. */
+  /** The lowest rank among the labels this person holds: one "Mother" chip puts them with parents. */
   familyRank: number;
   /** Their position in a manual ordering, or null if they were not in the list when it was saved. */
   sortOrder: number | null;
@@ -78,8 +108,8 @@ export const orderRelatedPeople = <T extends Orderable>(people: T[]): T[] => {
 
 /**
  * The age difference a relationship type expects, in signed years: how much older the counterpart
- * usually is than the subject. A type describes the counterpart, so "Parent" expects a positive
- * gap and "Child" the negative of it.
+ * usually is than the subject. A type describes the counterpart, so "Mother" expects a positive
+ * gap and "Son" the negative of it.
  *
  * Both bounds are set together or not at all. No range means age says nothing about the type —
  * a colleague can be any age — which is different from a range that happens not to fit.
@@ -98,11 +128,18 @@ export const MAX_AGE_GAP = 150;
  * merely offers an unlikely one further down.
  */
 export const FAMILY_AGE_GAPS: Record<string, [min: number, max: number]> = {
-  Parent: [15, 60],
-  Child: [-60, -15],
-  Grandparent: [35, 100],
-  Grandchild: [-100, -35],
-  Sibling: [-25, 25],
+  Husband: [-15, 15],
+  Wife: [-15, 15],
+  Father: [15, 60],
+  Mother: [15, 60],
+  Son: [-60, -15],
+  Daughter: [-60, -15],
+  Grandfather: [35, 100],
+  Grandmother: [35, 100],
+  Grandson: [-100, -35],
+  Granddaughter: [-100, -35],
+  Brother: [-25, 25],
+  Sister: [-25, 25],
   Cousin: [-18, 18],
   Aunt: [10, 60],
   Uncle: [10, 60],
@@ -114,10 +151,10 @@ export const FAMILY_AGE_GAPS: Record<string, [min: number, max: number]> = {
 
 /**
  * The range a type gets from its name, matching how {@link sortRankForName} works: a recreated
- * "Parent" behaves like the seeded one.
+ * "Mother" behaves like the seeded one, and a "Stepmother" like a mother.
  */
 export const ageGapForName = (name: string): AgeGap => {
-  const range = FAMILY_AGE_GAPS[name.trim()];
+  const range = readFamilyTerm(FAMILY_AGE_GAPS, name);
   return range ? { minAgeGap: range[0], maxAgeGap: range[1] } : { minAgeGap: null, maxAgeGap: null };
 };
 
@@ -128,7 +165,7 @@ export const invertAgeGap = ({ minAgeGap, maxAgeGap }: AgeGap): AgeGap => ({
 });
 
 /**
- * A symmetric type is its own inverse, so its range has to equal its own negation — "Sibling"
+ * A symmetric type is its own inverse, so its range has to equal its own negation — "Cousin"
  * cannot expect the counterpart to be older when both people hold the same label. The widest
  * bound entered is mirrored to both sides.
  */
@@ -175,11 +212,11 @@ export const ageGapBetween = (
 export type RelationshipGender = 'male' | 'female';
 
 /**
- * The genders the common English kinship terms carry. Applied by name so that a type the owner
- * invents behaves like a seeded one, the same way {@link sortRankForName} works.
+ * The genders the common English kinship terms carry. Only the base terms are listed, since a name
+ * is read for the term it contains: "Godson", "Stepson" and "Son-in-law" are all covered by "Son".
  *
- * A name that is not listed states nothing, which is the safe answer: an unlisted name only means
- * the picker offers a little more than it strictly could.
+ * A name containing none of them states nothing, which is the safe answer: an unrecognised name
+ * only means the picker offers a little more than it strictly could.
  */
 export const FAMILY_GENDERS: Record<string, RelationshipGender> = {
   Father: 'male',
@@ -188,30 +225,16 @@ export const FAMILY_GENDERS: Record<string, RelationshipGender> = {
   Daughter: 'female',
   Brother: 'male',
   Sister: 'female',
-  Grandfather: 'male',
-  Grandmother: 'female',
-  Grandson: 'male',
-  Granddaughter: 'female',
   Uncle: 'male',
   Aunt: 'female',
   Nephew: 'male',
   Niece: 'female',
   Husband: 'male',
   Wife: 'female',
-  Godfather: 'male',
-  Godmother: 'female',
-  Godson: 'male',
-  Goddaughter: 'female',
-  Stepfather: 'male',
-  Stepmother: 'female',
-  Stepson: 'male',
-  Stepdaughter: 'female',
-  Stepbrother: 'male',
-  Stepsister: 'female',
 };
 
 /** The gender a type gets from its name, so renaming a type re-reads what its name states. */
-export const genderForName = (name: string): RelationshipGender | null => FAMILY_GENDERS[name.trim()] ?? null;
+export const genderForName = (name: string): RelationshipGender | null => readFamilyTerm(FAMILY_GENDERS, name) ?? null;
 
 /**
  * The gender the labels a person already holds state about them, or null when none of them state
