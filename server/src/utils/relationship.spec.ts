@@ -47,15 +47,34 @@ describe(sortRankForName.name, () => {
   });
 
   it('should rank a name by the family term inside it', () => {
-    expect(sortRankForName('Brother-in-law')).toEqual(sortRankForName('Brother'));
     expect(sortRankForName('Stepmother')).toEqual(sortRankForName('Mother'));
-    expect(sortRankForName('Godson')).toEqual(sortRankForName('Son'));
+    expect(sortRankForName('Half brother')).toEqual(sortRankForName('Brother'));
+    expect(sortRankForName('Great-grandmother')).toEqual(sortRankForName('Grandmother'));
   });
 
   it('should read the longest term in a name, so a grandson is not a son', () => {
     expect(sortRankForName('Grandson')).toBeGreaterThan(sortRankForName('Son'));
     expect(sortRankForName('Granddaughter')).toEqual(sortRankForName('Grandson'));
     expect(sortRankForName('Grandmother')).toBeGreaterThan(sortRankForName('Mother'));
+  });
+
+  it('should rank family by marriage or by asking on its own, near the relatives it stands beside', () => {
+    expect(sortRankForName('Brother-in-law')).toEqual(35);
+    expect(sortRankForName('Sister-in-law')).toEqual(35);
+    expect(sortRankForName('Father-in-law')).toEqual(51);
+    expect(sortRankForName('Mother-in-law')).toEqual(51);
+    expect(sortRankForName('Son-in-law')).toEqual(52);
+    expect(sortRankForName('Daughter-in-law')).toEqual(52);
+    expect(sortRankForName('Godfather')).toEqual(55);
+    expect(sortRankForName('Godmother')).toEqual(55);
+    expect(sortRankForName('Godson')).toEqual(65);
+    expect(sortRankForName('Goddaughter')).toEqual(65);
+  });
+
+  it('should rank an in-law however it is punctuated', () => {
+    expect(sortRankForName('Brother-In-Law')).toEqual(sortRankForName('Brother-in-law'));
+    expect(sortRankForName('brother in law')).toEqual(sortRankForName('Brother-in-law'));
+    expect(sortRankForName('Daughter in law')).toEqual(52);
   });
 
   it('should give a neutral term the default rank, since the vocabulary is gendered', () => {

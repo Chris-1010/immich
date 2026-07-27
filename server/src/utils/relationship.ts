@@ -1,17 +1,25 @@
 /**
+ * Everything but the letters, so a term is recognised however it is punctuated: "Brother-in-law",
+ * "Brother in law" and "brotherinlaw" all reduce to the same thing.
+ */
+const bareLetters = (text: string) => text.toLowerCase().replaceAll(/[^a-z]/g, '');
+
+/**
  * Reads a name for the kinship term it contains rather than for what it is exactly, so the
  * variations an owner will actually type — "Brother-in-law", "Stepbrother", "Half brother" — are
- * all recognised as the brother they name, without every variation needing its own entry.
+ * all recognised without every spelling needing its own entry.
  *
- * The longest matching term wins, which is what stops "Grandson" being read as a son and
- * "Grandmother" as a mother. A name matching nothing is left to the caller's fallback.
+ * The longest matching term wins, which is what stops "Grandson" being read as a son, "Godmother"
+ * as a mother and "Sister-in-law" as a sister. A name matching nothing is left to the caller's
+ * fallback.
  */
 const readFamilyTerm = <T>(terms: Record<string, T>, name: string): T | undefined => {
-  const haystack = name.trim().toLowerCase();
+  const haystack = bareLetters(name);
 
   let longest: string | undefined;
   for (const term of Object.keys(terms)) {
-    if (haystack.includes(term.toLowerCase()) && (longest === undefined || term.length > longest.length)) {
+    const bare = bareLetters(term);
+    if (haystack.includes(bare) && (longest === undefined || bare.length > bareLetters(longest).length)) {
       longest = term;
     }
   }
@@ -29,6 +37,11 @@ const readFamilyTerm = <T>(terms: Record<string, T>, name: string): T | undefine
  * The terms are gendered wherever English has a gendered word, since a type that names a gender is
  * a type the picker can rule out. "Cousin" stays because English offers nothing else. The two
  * genders of a tier always rank together — a son and a daughter are equally children.
+ *
+ * In-laws and god-relations are family by marriage or by asking rather than by descent, so they
+ * get ranks of their own rather than the rank of the term inside them. They are placed among the
+ * blood family rather than below all of it: a brother-in-law belongs near the brothers, not under
+ * the cousins.
  */
 export const FAMILY_SORT_RANKS: Record<string, number> = {
   // A spouse heads the list: they are the one person on a page who is family by choice rather
@@ -41,12 +54,22 @@ export const FAMILY_SORT_RANKS: Record<string, number> = {
   Daughter: 20,
   Brother: 30,
   Sister: 30,
+  'Brother-in-law': 35,
+  'Sister-in-law': 35,
   Grandfather: 40,
   Grandmother: 40,
   Grandson: 50,
   Granddaughter: 50,
+  'Father-in-law': 51,
+  'Mother-in-law': 51,
+  'Son-in-law': 52,
+  'Daughter-in-law': 52,
+  Godfather: 55,
+  Godmother: 55,
   Aunt: 60,
   Uncle: 60,
+  Godson: 65,
+  Goddaughter: 65,
   Niece: 70,
   Nephew: 70,
   Cousin: 80,
