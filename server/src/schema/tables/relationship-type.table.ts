@@ -11,7 +11,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'src/sql-tools';
-import { DEFAULT_SORT_RANK } from 'src/utils/relationship';
+import { DEFAULT_SORT_RANK, RelationshipGender } from 'src/utils/relationship';
 
 @Table('relationship_type')
 @UpdatedAtTrigger('relationship_type_updatedAt')
@@ -49,6 +49,13 @@ export class RelationshipTypeTable {
 
   @Column({ type: 'integer', nullable: true })
   maxAgeGap!: number | null;
+
+  // The gender the type states about the person it describes, taken from its name: "Nephew" can
+  // only name a man. Null means the name states nothing, which is not the same as stating that
+  // either gender fits — it is simply unknown. Both halves carry their own, since Uncle / Niece
+  // names a man at one end and a woman at the other.
+  @Column({ nullable: true })
+  gender!: RelationshipGender | null;
 
   // Nullable only so the first half of a pair can be inserted before the second one exists;
   // both halves are wired up in the same transaction. A type pointing at itself is symmetric.

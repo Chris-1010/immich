@@ -20,7 +20,15 @@ import {
 import { Permission } from 'src/enum';
 import { canonicalOrder, RelationshipTypePair } from 'src/repositories/relationship.repository';
 import { BaseService } from 'src/services/base.service';
-import { AgeGap, ageGapBetween, invertAgeGap, orderTypesByAgeFit, symmetricAgeGap } from 'src/utils/relationship';
+import {
+  AgeGap,
+  ageGapBetween,
+  filterTypesByGender,
+  inferGender,
+  invertAgeGap,
+  orderTypesByAgeFit,
+  symmetricAgeGap,
+} from 'src/utils/relationship';
 
 /**
  * The expected age difference as the caller stated it, or undefined when they said nothing about
@@ -62,8 +70,9 @@ export class RelationshipService extends BaseService {
   /**
    * The starter set is seeded on first read, so an owner never sees an empty type picker.
    *
-   * Naming both people orders the list by how well each type fits the age difference between
-   * them, which is what turns a list of twenty into a short answer at the top.
+   * Naming the people narrows the list to the types their existing labels leave possible, then
+   * orders what is left by how well each one fits the age difference between them — which is what
+   * turns a list of twenty into a short answer at the top.
    */
   async getTypes(auth: AuthDto, dto: RelationshipTypeSearchDto = {}): Promise<RelationshipTypeResponseDto[]> {
     let types = await this.relationshipRepository.getTypes(auth.user.id);
@@ -72,9 +81,10 @@ export class RelationshipService extends BaseService {
       types = await this.relationshipRepository.getTypes(auth.user.id);
     }
 
-    const ageGap = await this.ageGapBetweenPeople(auth, dto);
+    const { ageGap, subjectGender, counterpartGender } = await this.pickerContext(auth, dto);
+    const possible = filterTypesByGender(types, subjectGender, counterpartGender);
 
-    return orderTypesByAgeFit(types, ageGap).map((type) => mapRelationshipType(type));
+    return orderTypesByAgeFit(possible, ageGap).map((type) => mapRelationshipType(type));
   }
 
   async createType(auth: AuthDto, dto: RelationshipTypeCreateDto): Promise<RelationshipTypeResponseDto> {
@@ -303,24 +313,32 @@ export class RelationshipService extends BaseService {
   }
 
   /**
-   * How much older the counterpart is than the subject, or null when the caller named no pair or
-   * either of them has no birth date recorded.
+   * What is already recorded about the people the picker is being opened for: how much older the
+   * counterpart is than the subject, and what gender each of their existing labels states.
+   *
+   * The age gap needs both people, since it is a difference; a gender needs only the one person it
+   * is about, so naming just the subject still rules the impossible types out.
    */
-  private async ageGapBetweenPeople(
-    auth: AuthDto,
-    { subjectId, counterpartId }: RelationshipTypeSearchDto,
-  ): Promise<number | null> {
-    if (!subjectId || !counterpartId || subjectId === counterpartId) {
-      return null;
+  private async pickerContext(auth: AuthDto, { subjectId, counterpartId }: RelationshipTypeSearchDto) {
+    const ids = [...new Set([subjectId, counterpartId].filter((id) => id !== undefined))];
+    if (ids.length === 0) {
+      return { ageGap: null, subjectGender: null, counterpartGender: null };
     }
 
-    await this.requireAccess({ auth, permission: Permission.PersonRead, ids: [subjectId, counterpartId] });
+    await this.requireAccess({ auth, permission: Permission.PersonRead, ids });
 
-    const people = await this.relationshipRepository.getBirthDates([subjectId, counterpartId]);
-    const subject = people.find((person) => person.id === subjectId);
-    const counterpart = people.find((person) => person.id === counterpartId);
+    const evidence = await this.relationshipRepository.getGenderEvidence(ids);
+    const genderOf = (id?: string) =>
+      id === undefined ? null : inferGender(evidence.filter((row) => row.personId === id).map((row) => row.gender));
 
-    return ageGapBetween(subject?.birthDate, counterpart?.birthDate);
+    const people = ids.length === 2 ? await this.relationshipRepository.getBirthDates(ids) : [];
+    const birthDateOf = (id?: string) => people.find((person) => person.id === id)?.birthDate;
+
+    return {
+      ageGap: ageGapBetween(birthDateOf(subjectId), birthDateOf(counterpartId)),
+      subjectGender: genderOf(subjectId),
+      counterpartGender: genderOf(counterpartId),
+    };
   }
 
   private async findRelationshipOrFail(id: string) {

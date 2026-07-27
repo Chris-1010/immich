@@ -1,9 +1,13 @@
 import {
   ageGapBetween,
   ageGapForName,
+  filterTypesByGender,
+  genderForName,
+  inferGender,
   invertAgeGap,
   orderRelatedPeople,
   orderTypesByAgeFit,
+  RelationshipGender,
   sortRankForName,
   symmetricAgeGap,
 } from 'src/utils/relationship';
@@ -24,6 +28,7 @@ const names = (people: { name: string }[]) => people.map(({ name }) => name);
 
 describe(sortRankForName.name, () => {
   it('should rank close family ahead of everything else', () => {
+    expect(sortRankForName('Wife')).toBeLessThan(sortRankForName('Parent'));
     expect(sortRankForName('Parent')).toBeLessThan(sortRankForName('Child'));
     expect(sortRankForName('Child')).toBeLessThan(sortRankForName('Sibling'));
     expect(sortRankForName('Sibling')).toBeLessThan(sortRankForName('Grandparent'));
@@ -35,6 +40,7 @@ describe(sortRankForName.name, () => {
   it('should give the two halves of a gendered pair the same rank', () => {
     expect(sortRankForName('Aunt')).toEqual(sortRankForName('Uncle'));
     expect(sortRankForName('Niece')).toEqual(sortRankForName('Nephew'));
+    expect(sortRankForName('Wife')).toEqual(sortRankForName('Husband'));
   });
 
   it('should give an invented type the default rank', () => {
@@ -262,5 +268,68 @@ describe('orderTypesByAgeFit', () => {
     orderTypesByAgeFit(types, 30);
 
     expect(typeNames(types)).toEqual(['Work', 'Parent']);
+  });
+});
+
+const gendered = (name: string, gender: RelationshipGender | null, inverseGender: RelationshipGender | null) => ({
+  name,
+  gender,
+  inverseGender,
+});
+
+const UNCLE_NEPHEW = gendered('Uncle', 'male', 'male');
+const UNCLE_NIECE = gendered('Uncle', 'male', 'female');
+const AUNT_NEPHEW = gendered('Aunt', 'female', 'male');
+const AUNT_NIECE = gendered('Aunt', 'female', 'female');
+const COUSIN_PAIR = gendered('Cousin', null, null);
+
+describe('genderForName', () => {
+  it('should read a gender off a name that carries one', () => {
+    expect(genderForName('Nephew')).toBe('male');
+    expect(genderForName('Aunt')).toBe('female');
+  });
+
+  it('should read nothing off a name that carries nothing', () => {
+    expect(genderForName('Cousin')).toBeNull();
+    expect(genderForName('Book club')).toBeNull();
+  });
+});
+
+describe('inferGender', () => {
+  it('should take the gender the labels agree on', () => {
+    expect(inferGender(['male', null, 'male'])).toBe('male');
+  });
+
+  it('should infer nothing when no label states anything', () => {
+    expect(inferGender([null, null])).toBeNull();
+    expect(inferGender([])).toBeNull();
+  });
+
+  it('should infer nothing from labels that disagree, since one of them is wrong', () => {
+    expect(inferGender(['male', 'female'])).toBeNull();
+  });
+});
+
+describe('filterTypesByGender', () => {
+  const ALL = [UNCLE_NEPHEW, UNCLE_NIECE, AUNT_NEPHEW, AUNT_NIECE, COUSIN_PAIR];
+
+  it('should offer everything while neither person is known', () => {
+    expect(filterTypesByGender(ALL, null, null)).toEqual(ALL);
+  });
+
+  it('should drop the halves that contradict the counterpart', () => {
+    expect(typeNames(filterTypesByGender(ALL, null, 'female'))).toEqual(['Aunt', 'Aunt', 'Cousin']);
+  });
+
+  it('should drop the pairs whose far half contradicts the subject', () => {
+    expect(filterTypesByGender(ALL, 'male', null)).toEqual([UNCLE_NEPHEW, AUNT_NEPHEW, COUSIN_PAIR]);
+  });
+
+  it('should leave one pair when both people are known', () => {
+    expect(filterTypesByGender(ALL, 'male', 'female')).toEqual([AUNT_NEPHEW, COUSIN_PAIR]);
+  });
+
+  it('should keep a type that states nothing whoever the two people are', () => {
+    expect(filterTypesByGender([COUSIN_PAIR], 'female', 'male')).toEqual([COUSIN_PAIR]);
   });
 });

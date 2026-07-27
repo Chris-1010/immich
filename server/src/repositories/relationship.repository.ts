@@ -6,6 +6,7 @@ import { DB } from 'src/schema';
 import {
   AgeGap,
   ageGapForName,
+  genderForName,
   invertAgeGap,
   Orderable,
   orderRelatedPeople,
@@ -102,8 +103,10 @@ export class RelationshipRepository {
         'relationship_type.name',
         'relationship_type.minAgeGap',
         'relationship_type.maxAgeGap',
+        'relationship_type.gender',
         'inverse.id as inverseId',
         'inverse.name as inverseName',
+        'inverse.gender as inverseGender',
       ])
       .where('relationship_type.ownerId', '=', ownerId)
       .orderBy('relationship_type.name')
@@ -172,10 +175,19 @@ export class RelationshipRepository {
     });
   }
 
-  /** Renames a single half of a pair. The other half is renamed by a second call. */
+  /**
+   * Renames a single half of a pair. The other half is renamed by a second call.
+   *
+   * The gender goes with the name, since that is where it came from: renaming "Nephew" to "Godson"
+   * keeps the half male, and renaming it to something unrecognised leaves it stating nothing.
+   */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
   async renameType(id: string, name: string): Promise<void> {
-    await this.db.updateTable('relationship_type').set({ name }).where('id', '=', id).execute();
+    await this.db
+      .updateTable('relationship_type')
+      .set({ name, gender: genderForName(name) })
+      .where('id', '=', id)
+      .execute();
   }
 
   /**
@@ -196,6 +208,34 @@ export class RelationshipRepository {
   @GenerateSql({ params: [[DummyValue.UUID]] })
   getBirthDates(ids: string[]) {
     return this.db.selectFrom('person').select(['id', 'birthDate']).where('id', 'in', ids).execute();
+  }
+
+  /**
+   * Every gender the labels these people already hold state about them, one row per label that
+   * states anything. Read from each person's own end: a label on a row where they are the
+   * counterpart describes them, and on a row where they are the subject its inverse does.
+   *
+   * Returned as evidence rather than a verdict so that labels disagreeing can be spotted — see
+   * {@link inferGender}.
+   */
+  @GenerateSql({ params: [[DummyValue.UUID]] })
+  getGenderEvidence(ids: string[]) {
+    const described = this.db
+      .selectFrom('person_relationship')
+      .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
+      .select(['person_relationship.counterpartId as personId', 'type.gender as gender'])
+      .where('person_relationship.counterpartId', 'in', ids)
+      .where('type.gender', 'is not', null);
+
+    const describing = this.db
+      .selectFrom('person_relationship')
+      .innerJoin('relationship_type as type', 'type.id', 'person_relationship.typeId')
+      .innerJoin('relationship_type as inverse', 'inverse.id', 'type.inverseId')
+      .select(['person_relationship.subjectId as personId', 'inverse.gender as gender'])
+      .where('person_relationship.subjectId', 'in', ids)
+      .where('inverse.gender', 'is not', null);
+
+    return this.db.selectFrom(described.unionAll(describing).as('evidence')).selectAll().execute();
   }
 
   /**
@@ -577,7 +617,7 @@ const createTypePair = async (
 
   const type = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name, sortRank: sortRankForName(name), ...gap })
+    .values({ ownerId, name, sortRank: sortRankForName(name), gender: genderForName(name), ...gap })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
@@ -589,7 +629,13 @@ const createTypePair = async (
 
   const inverse = await tx
     .insertInto('relationship_type')
-    .values({ ownerId, name: inverseName, sortRank: sortRankForName(inverseName), ...invertAgeGap(gap) })
+    .values({
+      ownerId,
+      name: inverseName,
+      sortRank: sortRankForName(inverseName),
+      gender: genderForName(inverseName),
+      ...invertAgeGap(gap),
+    })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 

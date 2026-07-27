@@ -304,6 +304,45 @@ describe(RelationshipRepository.name, () => {
       expect(insert.parameters).toContain(-10);
       expect(insert.parameters).toContain(10);
     });
+
+    it('should give each half the gender its own name states', async () => {
+      const { sut, statements } = newRepository([[{ id: 'type-uncle' }], [{ id: 'type-niece' }]]);
+
+      await sut.createTypePair({ ownerId: 'owner-1', name: 'Uncle', inverseName: 'Niece' });
+
+      const inserts = statements.filter((statement) => statement.sql.startsWith('insert'));
+      const [primary, inverse] = inserts;
+      expect(primary.parameters).toContain('male');
+      expect(inverse.parameters).toContain('female');
+    });
+
+    it('should leave a name that states no gender stating none', async () => {
+      const { sut, statements } = newRepository([[{ id: 'type-cousin' }]]);
+
+      await sut.createTypePair({ ownerId: 'owner-1', name: 'Cousin', inverseName: 'Cousin' });
+
+      const insert = statements.find((statement) => statement.sql.startsWith('insert'))!;
+      expect(insert.parameters).not.toContain('male');
+      expect(insert.parameters).not.toContain('female');
+    });
+  });
+
+  describe('renameType', () => {
+    it('should re-read the gender from the new name', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.renameType('type-1', 'Nephew');
+
+      expect(statements[0].parameters).toEqual(['Nephew', 'male', 'type-1']);
+    });
+
+    it('should clear the gender when the new name states none', async () => {
+      const { sut, statements } = newRepository();
+
+      await sut.renameType('type-1', 'Godchild');
+
+      expect(statements[0].parameters).toEqual(['Godchild', null, 'type-1']);
+    });
   });
 
   describe('setAgeGap', () => {

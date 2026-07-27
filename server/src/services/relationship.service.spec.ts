@@ -7,10 +7,15 @@ const ownerId = authStub.admin.user.id;
 
 const gap = (minAgeGap: number | null, maxAgeGap: number | null) => ({ minAgeGap, maxAgeGap });
 
-const parentType = { id: 'type-parent', name: 'Parent', ownerId, inverseId: 'type-child', inverseName: 'Child', ...gap(15, 60) }; // prettier-ignore
-const childType = { id: 'type-child', name: 'Child', ownerId, inverseId: 'type-parent', inverseName: 'Parent', ...gap(-60, -15) }; // prettier-ignore
-const siblingType = { id: 'type-sibling', name: 'Sibling', ownerId, inverseId: 'type-sibling', inverseName: 'Sibling', ...gap(-25, 25) }; // prettier-ignore
-const workType = { id: 'type-work', name: 'Work', ownerId, inverseId: 'type-work', inverseName: 'Work', ...gap(null, null) }; // prettier-ignore
+/** Most type pairs state nothing about gender. The ones that do say so in the test that cares. */
+const neutral = { gender: null, inverseGender: null };
+
+const parentType = { id: 'type-parent', name: 'Parent', ownerId, inverseId: 'type-child', inverseName: 'Child', ...gap(15, 60), ...neutral }; // prettier-ignore
+const childType = { id: 'type-child', name: 'Child', ownerId, inverseId: 'type-parent', inverseName: 'Parent', ...gap(-60, -15), ...neutral }; // prettier-ignore
+const siblingType = { id: 'type-sibling', name: 'Sibling', ownerId, inverseId: 'type-sibling', inverseName: 'Sibling', ...gap(-25, 25), ...neutral }; // prettier-ignore
+const uncleNieceType = { id: 'type-uncle', name: 'Uncle', ownerId, inverseId: 'type-niece', inverseName: 'Niece', ...gap(10, 60), gender: 'male' as const, inverseGender: 'female' as const }; // prettier-ignore
+const auntNieceType = { id: 'type-aunt', name: 'Aunt', ownerId, inverseId: 'type-niece-2', inverseName: 'Niece', ...gap(10, 60), gender: 'female' as const, inverseGender: 'female' as const }; // prettier-ignore
+const workType = { id: 'type-work', name: 'Work', ownerId, inverseId: 'type-work', inverseName: 'Work', ...gap(null, null), ...neutral }; // prettier-ignore
 
 /** Alice sorts before Bob, so a symmetric relationship between them is stored with Alice first. */
 const alice = 'person-alice';
@@ -35,6 +40,8 @@ describe(RelationshipService.name, () => {
     mocks.access.person.checkOwnerAccess.mockImplementation(granted);
     mocks.access.relationshipType.checkOwnerAccess.mockImplementation(granted);
     mocks.access.relationship.checkOwnerAccess.mockImplementation(granted);
+    mocks.relationship.getGenderEvidence.mockResolvedValue([]);
+    mocks.relationship.getBirthDates.mockResolvedValue([]);
   });
 
   it('should work', () => {
@@ -125,6 +132,47 @@ describe(RelationshipService.name, () => {
 
       expect(mocks.relationship.getBirthDates).not.toHaveBeenCalled();
     });
+
+    it('should drop the types that contradict the counterpart', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([uncleNieceType, auntNieceType, siblingType]);
+      // Bob is already recorded as somebody's nephew, so he is a man.
+      mocks.relationship.getGenderEvidence.mockResolvedValue([{ personId: bob, gender: 'male' }]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice, counterpartId: bob });
+
+      expect(types.map(({ name }) => name)).toEqual(['Uncle', 'Sibling']);
+    });
+
+    it('should drop the pairs whose opposite half contradicts the subject', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([uncleNieceType, auntNieceType, siblingType]);
+      // Alice is the niece in the pairs, and she is already recorded as somebody's niece.
+      mocks.relationship.getGenderEvidence.mockResolvedValue([{ personId: alice, gender: 'female' }]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice, counterpartId: bob });
+
+      expect(types.map(({ name }) => name)).toEqual(['Uncle', 'Aunt', 'Sibling']);
+    });
+
+    it('should narrow the list from the subject alone', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([uncleNieceType, auntNieceType, siblingType]);
+      mocks.relationship.getGenderEvidence.mockResolvedValue([{ personId: alice, gender: 'male' }]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice });
+
+      expect(types.map(({ name }) => name)).toEqual(['Sibling']);
+    });
+
+    it('should keep offering everything when the labels a person holds disagree', async () => {
+      mocks.relationship.getTypes.mockResolvedValue([uncleNieceType, auntNieceType, siblingType]);
+      mocks.relationship.getGenderEvidence.mockResolvedValue([
+        { personId: bob, gender: 'male' },
+        { personId: bob, gender: 'female' },
+      ]);
+
+      const types = await sut.getTypes(authStub.admin, { subjectId: alice, counterpartId: bob });
+
+      expect(types.map(({ name }) => name)).toEqual(['Uncle', 'Aunt', 'Sibling']);
+    });
   });
 
   describe('createType', () => {
@@ -139,7 +187,7 @@ describe(RelationshipService.name, () => {
     });
 
     it('should allow a repeated name with a different opposite', async () => {
-      const uncleNephew = { id: 'type-uncle', name: 'Uncle', ownerId, inverseId: 'type-nephew', inverseName: 'Nephew', ...gap(10, 60) }; // prettier-ignore
+      const uncleNephew = { id: 'type-uncle', name: 'Uncle', ownerId, inverseId: 'type-nephew', inverseName: 'Nephew', ...gap(10, 60), ...neutral }; // prettier-ignore
       mocks.relationship.getTypes.mockResolvedValue([uncleNephew]);
       mocks.relationship.createTypePair.mockResolvedValue({
         id: 'type-uncle-2',

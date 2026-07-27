@@ -6,6 +6,10 @@
  * numbering leaves room to slot a rank in between later without renumbering.
  */
 export const FAMILY_SORT_RANKS: Record<string, number> = {
+  // A spouse heads the list: they are the one person on a page who is family by choice rather
+  // than by descent, so they sit above the tree rather than anywhere within it.
+  Husband: 5,
+  Wife: 5,
   Parent: 10,
   Child: 20,
   Sibling: 30,
@@ -160,6 +164,88 @@ export const ageGapBetween = (
 
   return (subject - counterpart) / MILLISECONDS_PER_YEAR;
 };
+
+/**
+ * The gender a relationship type states about the person it describes. "Uncle" can only ever
+ * describe a man and "Niece" only a woman; "Cousin" states nothing and is left null.
+ *
+ * Carried by the type half rather than by the pair, because the two halves are independent of each
+ * other: the Uncle / Niece pair names a man at one end and a woman at the other.
+ */
+export type RelationshipGender = 'male' | 'female';
+
+/**
+ * The genders the common English kinship terms carry. Applied by name so that a type the owner
+ * invents behaves like a seeded one, the same way {@link sortRankForName} works.
+ *
+ * A name that is not listed states nothing, which is the safe answer: an unlisted name only means
+ * the picker offers a little more than it strictly could.
+ */
+export const FAMILY_GENDERS: Record<string, RelationshipGender> = {
+  Father: 'male',
+  Mother: 'female',
+  Son: 'male',
+  Daughter: 'female',
+  Brother: 'male',
+  Sister: 'female',
+  Grandfather: 'male',
+  Grandmother: 'female',
+  Grandson: 'male',
+  Granddaughter: 'female',
+  Uncle: 'male',
+  Aunt: 'female',
+  Nephew: 'male',
+  Niece: 'female',
+  Husband: 'male',
+  Wife: 'female',
+  Godfather: 'male',
+  Godmother: 'female',
+  Godson: 'male',
+  Goddaughter: 'female',
+  Stepfather: 'male',
+  Stepmother: 'female',
+  Stepson: 'male',
+  Stepdaughter: 'female',
+  Stepbrother: 'male',
+  Stepsister: 'female',
+};
+
+/** The gender a type gets from its name, so renaming a type re-reads what its name states. */
+export const genderForName = (name: string): RelationshipGender | null => FAMILY_GENDERS[name.trim()] ?? null;
+
+/**
+ * The gender the labels a person already holds state about them, or null when none of them state
+ * anything. Labels that disagree — which only happens when one of them is wrong — state nothing
+ * between them, so a single mistake never narrows what the picker offers.
+ */
+export const inferGender = (genders: Array<RelationshipGender | null>): RelationshipGender | null => {
+  const stated = new Set(genders.filter((gender) => gender !== null));
+  return stated.size === 1 ? [...stated][0] : null;
+};
+
+/** The part of a relationship type the gender rules read. */
+export interface Genderable {
+  gender: RelationshipGender | null;
+  inverseGender: RelationshipGender | null;
+}
+
+const agreesWith = (stated: RelationshipGender | null, known: RelationshipGender | null) =>
+  stated === null || known === null || stated === known;
+
+/**
+ * Drops the types that contradict what the two people's existing labels already state.
+ *
+ * A type describes the counterpart and its inverse describes the subject, so both ends are
+ * checked: once someone is recorded as a nephew, their page stops offering "Niece" for themselves
+ * and stops offering the Aunt / Nephew pair — the half naming them stays male either way, but the
+ * half naming the other person has to match whatever that person is already known to be.
+ */
+export const filterTypesByGender = <T extends Genderable>(
+  types: T[],
+  subjectGender: RelationshipGender | null,
+  counterpartGender: RelationshipGender | null,
+): T[] =>
+  types.filter((type) => agreesWith(type.gender, counterpartGender) && agreesWith(type.inverseGender, subjectGender));
 
 /** The part of a relationship type the picker ordering reads. */
 export interface AgeFittable extends AgeGap {
