@@ -219,6 +219,21 @@ describe(RelationshipRepository.name, () => {
     });
   });
 
+  describe('getCoAppearances', () => {
+    it('should exclude people already linked to the subject from either end', async () => {
+      const { sut, statements } = newRepository([[]]);
+
+      await sut.getCoAppearances('owner-1', 'person-a');
+
+      const [, exclusion] = statements[0].sql.split('not exists');
+      expect(exclusion).toContain('"person_relationship"');
+      // Both directions, because a relationship is stored once and read from both ends.
+      expect(exclusion).toContain('"person_relationship"."subjectId" = $');
+      expect(exclusion).toContain('"person_relationship"."counterpartId" = $');
+      expect(exclusion).toContain('"person"."id"');
+    });
+  });
+
   describe('reassignRelationships', () => {
     it('should move the merged person onto the surviving person', async () => {
       const { sut, statements } = newRepository([

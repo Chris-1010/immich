@@ -376,8 +376,9 @@ export class RelationshipRepository {
   }
 
   /**
-   * Named, visible people ranked by how many assets they share with the subject. Everyone is
-   * returned — people sharing nothing sort last — so a picker can still offer them.
+   * Named, visible people ranked by how many assets they share with the subject. Everyone the
+   * subject is not already linked to is returned — people sharing nothing sort last — so a picker
+   * can still offer them.
    *
    * This is deliberately not the face-embedding ordering used for merge suggestions: people who
    * look alike are the least likely to be related.
@@ -404,6 +405,29 @@ export class RelationshipRepository {
       .where('person.id', '!=', personId)
       .where('person.isHidden', '=', false)
       .where('person.name', '!=', '')
+      // Already-linked people are left out: this picker only starts a new relationship, and a
+      // further label for an existing counterpart is added from that counterpart's own row.
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('person_relationship')
+              .select(sql`1`.as('linked'))
+              .where((inner) =>
+                inner.or([
+                  inner.and([
+                    inner('person_relationship.subjectId', '=', personId),
+                    inner('person_relationship.counterpartId', '=', inner.ref('person.id')),
+                  ]),
+                  inner.and([
+                    inner('person_relationship.counterpartId', '=', personId),
+                    inner('person_relationship.subjectId', '=', inner.ref('person.id')),
+                  ]),
+                ]),
+              ),
+          ),
+        ),
+      )
       .groupBy('person.id')
       .orderBy(sharedAssets, 'desc')
       .orderBy('person.name')
