@@ -12,6 +12,7 @@
     Field,
     HStack,
     Input,
+    Label,
     Modal,
     ModalBody,
     ModalFooter,
@@ -196,12 +197,25 @@
             <Input inputmode="numeric" bind:value={ageSpread} />
           </Field>
         {:else}
-          <Field label={$t('relationship_type_age_gap')} description={$t('relationship_type_age_gap_description')}>
-            <div class="flex gap-2">
-              <Input inputmode="numeric" bind:value={minAgeGap} aria-label={$t('relationship_type_age_gap_lowest')} />
-              <Input inputmode="numeric" bind:value={maxAgeGap} aria-label={$t('relationship_type_age_gap_highest')} />
+          <!-- Two inputs share one label, so the label and description are written out here rather
+               than left to Field, which would repeat both once per input. -->
+          <div class="flex w-full flex-col gap-1">
+            <Label label={$t('relationship_type_age_gap')} />
+            <Text color="muted" size="small" class="mb-2">{$t('relationship_type_age_gap_description')}</Text>
+            <div class="flex items-center gap-2">
+              <div class="w-24">
+                <Input inputmode="numeric" bind:value={minAgeGap} aria-label={$t('relationship_type_age_gap_lowest')} />
+              </div>
+              <Text aria-hidden="true">–</Text>
+              <div class="w-24">
+                <Input
+                  inputmode="numeric"
+                  bind:value={maxAgeGap}
+                  aria-label={$t('relationship_type_age_gap_highest')}
+                />
+              </div>
             </div>
-          </Field>
+          </div>
         {/if}
       </div>
     </form>
