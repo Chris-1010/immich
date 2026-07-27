@@ -2,13 +2,24 @@
   import { goto } from '$app/navigation';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import { getPersonPageContext } from '$lib/components/faces-page/person-page-context';
+  import PersonPickerSidePanel from '$lib/components/relationships/person-picker-side-panel.svelte';
+  import TypePickerSidePanel from '$lib/components/relationships/type-picker-side-panel.svelte';
   import ControlAppBar from '$lib/components/shared-components/control-app-bar.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/empty-placeholder.svelte';
   import { AppRoute } from '$lib/constants';
   import Portal from '$lib/elements/Portal.svelte';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { deleteRelationship, type PersonRelationshipResponseDto, type RelatedPersonResponseDto } from '@immich/sdk';
+  import {
+    createRelationship,
+    deleteRelationship,
+    getRelatedPeople,
+    updateRelationship,
+    type CoAppearanceResponseDto,
+    type PersonRelationshipResponseDto,
+    type RelatedPersonResponseDto,
+    type RelationshipTypeResponseDto,
+  } from '@immich/sdk';
   import { Button, Icon } from '@immich/ui';
   import { mdiArrowLeft, mdiClose, mdiPlus } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -24,11 +35,122 @@
 
   let relatedPeople = $derived<RelatedPersonResponseDto[]>(data.relatedPeople);
 
-  // The person and type pickers are separate components; these controls open them once
-  // both flows are connected.
-  const handleAddRelationship = () => {};
-  const handleAddLabel = () => {};
-  const handleRelabel = () => {};
+  /**
+   * What the pickers are showing. Nothing is written until a type has been chosen, so the type
+   * step carries whatever the type will be applied to.
+   */
+  type PickerFlow =
+    | { step: 'person' }
+    | {
+        step: 'type';
+        target:
+          | { kind: 'add'; counterpartId: string }
+          | { kind: 'relabel'; relatedPerson: RelatedPersonResponseDto; relationship: PersonRelationshipResponseDto };
+        /** True when the type step was reached through the person step, so closing it goes back. */
+        hasPersonStep: boolean;
+      };
+
+  let flow: PickerFlow | undefined = $state();
+  let hasPersonStep = $derived(flow?.step === 'type' && flow.hasPersonStep);
+
+  const closeFlow = () => (flow = undefined);
+
+  const handleAddRelationship = () => (flow = { step: 'person' });
+
+  const handleAddLabel = (relatedPerson: RelatedPersonResponseDto) =>
+    (flow = { step: 'type', target: { kind: 'add', counterpartId: relatedPerson.id }, hasPersonStep: false });
+
+  const handleRelabel = (relatedPerson: RelatedPersonResponseDto, relationship: PersonRelationshipResponseDto) =>
+    (flow = { step: 'type', target: { kind: 'relabel', relatedPerson, relationship }, hasPersonStep: false });
+
+  const handlePersonSelected = (person: CoAppearanceResponseDto) =>
+    (flow = { step: 'type', target: { kind: 'add', counterpartId: person.id }, hasPersonStep: true });
+
+  // The back arrow on the type step returns to the person step when there is one; otherwise it
+  // is the only way out and ends the flow.
+  const handleTypeStepClose = () => (flow = hasPersonStep ? { step: 'person' } : undefined);
+
+  const refresh = async () => {
+    try {
+      relatedPeople = await getRelatedPeople({ id: personPage.getPerson().id });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_load_relationships'));
+    }
+  };
+
+  const handleTypeSelected = async (type: RelationshipTypeResponseDto) => {
+    const current = flow;
+    if (current?.step !== 'type') {
+      return;
+    }
+
+    flow = undefined;
+
+    await (current.target.kind === 'add'
+      ? addRelationship(current.target.counterpartId, type)
+      : relabel(current.target.relatedPerson, current.target.relationship, type));
+  };
+
+  const addRelationship = async (counterpartId: string, type: RelationshipTypeResponseDto) => {
+    try {
+      await createRelationship({
+        relationshipCreateDto: { subjectId: personPage.getPerson().id, counterpartId, typeId: type.id },
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_add_relationship'));
+      return;
+    }
+
+    // The stored row may be canonicalised or already exist from the other end, so the list is
+    // read back rather than guessed at.
+    await refresh();
+  };
+
+  const relabel = async (
+    relatedPerson: RelatedPersonResponseDto,
+    relationship: PersonRelationshipResponseDto,
+    type: RelationshipTypeResponseDto,
+  ) => {
+    if (type.id === relationship.typeId) {
+      return;
+    }
+
+    const previous = relatedPeople;
+
+    relatedPeople = relatedPeople.map((entry) =>
+      entry.id === relatedPerson.id
+        ? {
+            ...entry,
+            relationships: entry.relationships.map((current) =>
+              current.id === relationship.id
+                ? {
+                    ...current,
+                    typeId: type.id,
+                    typeName: type.name,
+                    inverseId: type.inverseId,
+                    inverseName: type.inverseName,
+                  }
+                : current,
+            ),
+          }
+        : entry,
+    );
+
+    try {
+      // The label describes the other person, so the new type is read from this page's person.
+      await updateRelationship({
+        id: relationship.id,
+        relationshipUpdateDto: { subjectId: personPage.getPerson().id, typeId: type.id },
+      });
+    } catch (error) {
+      relatedPeople = previous;
+      handleError(error, $t('errors.unable_to_change_relationship'));
+      return;
+    }
+
+    // Relabelling onto a type the two people already hold collapses two chips into one.
+    await refresh();
+  };
 
   const handleRemove = async (relatedPerson: RelatedPersonResponseDto, relationship: PersonRelationshipResponseDto) => {
     const previous = relatedPeople;
@@ -90,7 +212,7 @@
                   type="button"
                   class="ps-3 pe-1 py-1 text-sm font-medium text-primary"
                   title={$t('relationship_change_label')}
-                  onclick={handleRelabel}
+                  onclick={() => handleRelabel(relatedPerson, relationship)}
                 >
                   {relationship.typeName}
                 </button>
@@ -111,7 +233,7 @@
               class="rounded-full border border-gray-300 dark:border-immich-dark-gray p-1.5 text-gray-600 dark:text-gray-300 hover:text-primary"
               title={$t('relationship_add_label')}
               aria-label={$t('relationship_add_label')}
-              onclick={handleAddLabel}
+              onclick={() => handleAddLabel(relatedPerson)}
             >
               <Icon icon={mdiPlus} size="1em" aria-hidden />
             </button>
@@ -121,3 +243,24 @@
     </ul>
   {/if}
 </section>
+
+<!-- The pickers are fly-ins pinned to the viewport edge, so they sit outside the page container too. -->
+{#if flow}
+  <Portal target="body">
+    <div class="fixed top-0 end-0 z-30 h-full w-90">
+      {#if flow.step === 'person'}
+        <PersonPickerSidePanel
+          subjectId={personPage.getPerson().id}
+          onClose={closeFlow}
+          onSelect={handlePersonSelected}
+        />
+      {:else}
+        <TypePickerSidePanel
+          onClose={handleTypeStepClose}
+          onCancel={hasPersonStep ? closeFlow : undefined}
+          onSelect={handleTypeSelected}
+        />
+      {/if}
+    </div>
+  </Portal>
+{/if}

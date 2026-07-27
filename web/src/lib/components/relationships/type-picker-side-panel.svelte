@@ -6,7 +6,7 @@
   import { handleError } from '$lib/utils/handle-error';
   import { getRelationshipTypes, type RelationshipTypeResponseDto } from '@immich/sdk';
   import { Button, Icon, IconButton, LoadingSpinner, modalManager } from '@immich/ui';
-  import { mdiArrowLeftThin, mdiPencilOutline, mdiPlus } from '@mdi/js';
+  import { mdiArrowLeftThin, mdiClose, mdiPencilOutline, mdiPlus } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { linear } from 'svelte/easing';
@@ -14,10 +14,12 @@
 
   interface Props {
     onClose: () => void;
+    /** Shown as a separate control when closing this panel goes back a step rather than ending the flow. */
+    onCancel?: () => void;
     onSelect: (type: RelationshipTypeResponseDto) => void;
   }
 
-  let { onClose, onSelect }: Props = $props();
+  let { onClose, onCancel, onSelect }: Props = $props();
 
   let types: RelationshipTypeResponseDto[] = $state([]);
   let isLoadingTypes = $state(false);
@@ -100,7 +102,18 @@
       aria-label={$t('back')}
       onclick={onClose}
     />
-    <p class="flex text-lg text-immich-fg dark:text-immich-dark-fg">{$t('relationship_select_type')}</p>
+    <p class="flex grow text-lg text-immich-fg dark:text-immich-dark-fg">{$t('relationship_select_type')}</p>
+    {#if onCancel}
+      <IconButton
+        color="secondary"
+        variant="ghost"
+        shape="round"
+        icon={mdiClose}
+        aria-label={$t('cancel')}
+        title={$t('cancel')}
+        onclick={onCancel}
+      />
+    {/if}
   </div>
 
   <div class="px-4 pt-4">
