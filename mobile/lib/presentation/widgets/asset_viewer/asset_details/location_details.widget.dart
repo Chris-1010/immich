@@ -1,3 +1,4 @@
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/constants/enums.dart';
@@ -8,6 +9,7 @@ import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/asset_viewer/sheet_tile.widget.dart';
 import 'package:immich_mobile/providers/infrastructure/action.provider.dart';
+import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/asset_viewer/detail_panel/exif_map.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
@@ -93,6 +95,7 @@ class _LocationDetailsState extends ConsumerState<LocationDetails> {
                     markerId: asset.id,
                     markerAssetThumbhash: asset.thumbHash,
                     onMapCreated: _onMapCreated,
+                    onTap: (coordinates) => context.pushRoute(DriftMapRoute(initialLocation: coordinates)),
                   ),
                   const SizedBox(height: 16),
                   if (locationName != null)

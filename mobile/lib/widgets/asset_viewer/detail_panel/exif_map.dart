@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:immich_mobile/domain/models/exif.model.dart';
+import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/utils/debug_print.dart';
 import 'package:immich_mobile/widgets/map/map_thumbnail.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -17,12 +18,17 @@ class ExifMap extends StatelessWidget {
   final String? markerAssetThumbhash;
   final MapCreatedCallback? onMapCreated;
 
+  /// Called when the thumbnail is tapped, with the asset's coordinates. Used to
+  /// open the in-app map; the external maps app stays behind the corner button.
+  final void Function(LatLng coordinates)? onTap;
+
   const ExifMap({
     super.key,
     required this.exifInfo,
     this.markerAssetThumbhash,
     this.markerId = 'marker',
     this.onMapCreated,
+    this.onTap,
   });
 
   @override
@@ -63,28 +69,64 @@ class ExifMap extends StatelessWidget {
       );
     }
 
+    Future<void> openInExternalMapApp() async {
+      Uri? uri = await createCoordinatesUri();
+
+      if (uri == null) {
+        return;
+      }
+
+      dPrint(() => 'Opening Map Uri: $uri');
+      unawaited(launchUrl(uri));
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        return MapThumbnail(
-          centre: LatLng(exifInfo.latitude ?? 0, exifInfo.longitude ?? 0),
-          height: 150,
-          width: constraints.maxWidth,
-          zoom: 12.0,
-          assetMarkerRemoteId: markerId,
-          assetThumbhash: markerAssetThumbhash,
-          onTap: (tapPosition, latLong) async {
-            Uri? uri = await createCoordinatesUri();
+        return Stack(
+          children: [
+            MapThumbnail(
+              centre: LatLng(exifInfo.latitude ?? 0, exifInfo.longitude ?? 0),
+              height: 150,
+              width: constraints.maxWidth,
+              zoom: 12.0,
+              assetMarkerRemoteId: markerId,
+              assetThumbhash: markerAssetThumbhash,
+              onTap: (tapPosition, latLong) {
+                if (!hasCoordinates) {
+                  return;
+                }
 
-            if (uri == null) {
-              return;
-            }
-
-            dPrint(() => 'Opening Map Uri: $uri');
-            unawaited(launchUrl(uri));
-          },
-          onCreated: onMapCreated,
+                onTap?.call(LatLng(exifInfo.latitude!, exifInfo.longitude!));
+              },
+              onCreated: onMapCreated,
+            ),
+            if (hasCoordinates)
+              Positioned(top: 8, right: 8, child: _OpenInMapAppButton(onPressed: openInExternalMapApp)),
+          ],
         );
       },
+    );
+  }
+}
+
+class _OpenInMapAppButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _OpenInMapAppButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.colorScheme.surface.withAlpha(220),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(6.0),
+          child: Icon(Icons.open_in_new_rounded, size: 18, color: context.colorScheme.onSurface),
+        ),
+      ),
     );
   }
 }
