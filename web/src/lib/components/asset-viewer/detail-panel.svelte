@@ -17,6 +17,7 @@
   import { delay, getDimensions } from '$lib/utils/asset-utils';
   import { getByteUnitString } from '$lib/utils/byte-units';
   import { getMetadataSearchQuery } from '$lib/utils/metadata-search';
+  import { idsInRange } from '$lib/utils/range-select';
   import { fromISODateTime, fromISODateTimeUTC, toTimelineAsset } from '$lib/utils/timeline-util';
   import { getParentPath } from '$lib/utils/tree-utils';
   import { getAltText } from '$lib/utils/thumbnail-util';
@@ -25,9 +26,10 @@
     getAssetInfo,
     type AlbumResponseDto,
     type AssetResponseDto,
+    type PersonWithFacesResponseDto,
     type StackResponseDto,
   } from '@immich/sdk';
-  import { Icon, IconButton, LoadingSpinner, modalManager } from '@immich/ui';
+  import { Icon, IconButton, LoadingSpinner, modalManager, toastManager } from '@immich/ui';
   import {
     mdiCalendar,
     mdiCamera,
@@ -37,13 +39,16 @@
     mdiEyeOff,
     mdiImageOutline,
     mdiInformationOutline,
+    mdiCheck,
     mdiPencil,
     mdiPlus,
+    mdiTagPlusOutline,
   } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import ImageThumbnail from '../assets/thumbnail/image-thumbnail.svelte';
+  import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
   import PersonSidePanel from '../faces-page/person-side-panel.svelte';
   import UserAvatar from '../shared-components/user-avatar.svelte';
   import AlbumListItemDetails from './album-list-item-details.svelte';
@@ -75,6 +80,55 @@
   let people = $derived(asset.people || []);
   let unassignedFaces = $derived(asset.unassignedFaces || []);
   let showingHiddenPeople = $state(false);
+
+  /** Picking people out of this photo to write the same details onto all of them. */
+  let bulkDetails = $state(false);
+  let selected = $state<PersonWithFacesResponseDto[]>([]);
+  let selectedIds = $derived(new Set(selected.map((person) => person.id)));
+
+  /** The last person picked on their own, which is the end a shift-click draws its range from. */
+  let anchorId = $state<string>();
+
+  /** The faces on show, which is what a range is drawn over and what the order follows. */
+  let shownPeople = $derived(people.filter((person) => showingHiddenPeople || !person.isHidden));
+
+  // Read back from the photo, so the people handed to the modal are in the order they appear here
+  // rather than the order they happened to be picked in.
+  let selectedPeople = $derived(shownPeople.filter((person) => selectedIds.has(person.id)));
+
+  const handleToggleBulkDetails = () => {
+    bulkDetails = !bulkDetails;
+    selected = [];
+    anchorId = undefined;
+  };
+
+  const handleSelect = (event: MouseEvent, person: PersonWithFacesResponseDto) => {
+    // Shift takes everyone from the last one picked to this one; the anchor stays put afterwards, so
+    // the same range can be redrawn shorter or longer without starting again. Ctrl and Cmd gather
+    // people up one at a time, and so does a plain click, since nothing else is left for one to mean.
+    if (event.shiftKey && anchorId) {
+      const range = new Set(idsInRange(shownPeople, anchorId, person.id));
+      selected = [...selected, ...shownPeople.filter((other) => range.has(other.id) && !selectedIds.has(other.id))];
+      return;
+    }
+
+    selected = selectedIds.has(person.id) ? selected.filter((other) => other.id !== person.id) : [...selected, person];
+    anchorId = person.id;
+  };
+
+  const handleAddDetails = async () => {
+    // An array back means it was applied and an absent one means it was cancelled, which is all the
+    // panel needs to tell apart — the details themselves belong to the people, not to the photo.
+    const count = selectedPeople.length;
+    const applied = await modalManager.show(PersonDetailsModal, { people: selectedPeople });
+    if (!applied) {
+      return;
+    }
+
+    toastManager.success($t('details_added_to_people', { values: { count } }));
+    handleToggleBulkDetails();
+  };
+
   let timeZone = $derived(asset.exifInfo?.timeZone ?? undefined);
   let dateTime = $derived(
     timeZone && asset.exifInfo?.dateTimeOriginal
@@ -100,6 +154,12 @@
     if (asset.id !== previousId) {
       showEditFaces = false;
       previousId = asset.id;
+
+      // The picks were made out of faces that are no longer on screen, and carrying them onto the
+      // next photo would be writing details to people who cannot be seen.
+      bulkDetails = false;
+      selected = [];
+      anchorId = undefined;
     }
   });
 
@@ -189,7 +249,11 @@
             onclick={() => onSelectStackedAsset?.(stackedAsset)}
           >
             <img
-              src={getAssetThumbnailUrl({ id: stackedAsset.id, size: AssetMediaSize.Thumbnail, cacheKey: stackedAsset.thumbhash })}
+              src={getAssetThumbnailUrl({
+                id: stackedAsset.id,
+                size: AssetMediaSize.Thumbnail,
+                cacheKey: stackedAsset.thumbhash,
+              })}
               alt={$getAltText(toTimelineAsset(stackedAsset))}
               draggable="false"
               class={[
@@ -211,6 +275,34 @@
       <div class="flex h-10 w-full items-center justify-between">
         <h2 class="uppercase">{$t('people')}</h2>
         <div class="flex gap-2 items-center">
+          <!-- Only while the mode is on, so the button that does the work appears beside the one that
+               started it rather than sitting greyed out until a face is picked. -->
+          {#if bulkDetails && selected.length > 0}
+            <IconButton
+              aria-label={$t('add_details_to_people', { values: { count: selected.length } })}
+              icon={mdiTagPlusOutline}
+              size="medium"
+              shape="round"
+              color="primary"
+              variant="filled"
+              onclick={handleAddDetails}
+            />
+          {/if}
+
+          {#if people.length > 0}
+            <IconButton
+              aria-label={bulkDetails
+                ? $t('people_selected_count', { values: { count: selected.length } })
+                : $t('bulk_detail_insertion')}
+              icon={mdiTagPlusOutline}
+              size="medium"
+              shape="round"
+              color="secondary"
+              variant={bulkDetails ? 'filled' : 'ghost'}
+              onclick={handleToggleBulkDetails}
+            />
+          {/if}
+
           {#if people.some((person) => person.isHidden)}
             <IconButton
               aria-label={$t('show_hidden_people')}
@@ -249,18 +341,7 @@
       <div class="mt-2 flex flex-wrap gap-2">
         {#each people as person, index (person.id)}
           {#if showingHiddenPeople || !person.isHidden}
-            <a
-              class="w-22"
-              href={resolve(
-                `${AppRoute.PEOPLE}/${person.id}?${QueryParameter.PREVIOUS_ROUTE}=${
-                  currentAlbum?.id ? `${AppRoute.ALBUMS}/${currentAlbum?.id}` : AppRoute.PHOTOS
-                }`,
-              )}
-              onfocus={() => ($boundingBoxesArray = people[index].faces)}
-              onblur={() => ($boundingBoxesArray = [])}
-              onmouseover={() => ($boundingBoxesArray = people[index].faces)}
-              onmouseleave={() => ($boundingBoxesArray = [])}
-            >
+            {#snippet face()}
               <div class="relative">
                 <ImageThumbnail
                   curve
@@ -271,7 +352,14 @@
                   widthStyle="90px"
                   heightStyle="90px"
                   hidden={person.isHidden}
+                  class={selectedIds.has(person.id) ? 'ring-4 ring-primary' : undefined}
                 />
+
+                {#if bulkDetails && selectedIds.has(person.id)}
+                  <div class="absolute top-1 end-1 rounded-full bg-primary p-1 text-white" title={$t('selected')}>
+                    <Icon icon={mdiCheck} size="1em" aria-hidden />
+                  </div>
+                {/if}
               </div>
               <p class="mt-1 truncate font-medium" title={person.name}>{person.name}</p>
               {#if person.birthDate}
@@ -302,7 +390,39 @@
                   </p>
                 {/if}
               {/if}
-            </a>
+            {/snippet}
+
+            <!-- A face is a link to that person until the mode is on, at which point it is a pick:
+                 a card that did both would send anyone who meant to pick one away from the photo. -->
+            {#if bulkDetails}
+              <button
+                type="button"
+                class="w-22 select-none text-start"
+                aria-pressed={selectedIds.has(person.id)}
+                onclick={(event) => handleSelect(event, person)}
+                onfocus={() => ($boundingBoxesArray = people[index].faces)}
+                onblur={() => ($boundingBoxesArray = [])}
+                onmouseover={() => ($boundingBoxesArray = people[index].faces)}
+                onmouseleave={() => ($boundingBoxesArray = [])}
+              >
+                {@render face()}
+              </button>
+            {:else}
+              <a
+                class="w-22"
+                href={resolve(
+                  `${AppRoute.PEOPLE}/${person.id}?${QueryParameter.PREVIOUS_ROUTE}=${
+                    currentAlbum?.id ? `${AppRoute.ALBUMS}/${currentAlbum?.id}` : AppRoute.PHOTOS
+                  }`,
+                )}
+                onfocus={() => ($boundingBoxesArray = people[index].faces)}
+                onblur={() => ($boundingBoxesArray = [])}
+                onmouseover={() => ($boundingBoxesArray = people[index].faces)}
+                onmouseleave={() => ($boundingBoxesArray = [])}
+              >
+                {@render face()}
+              </a>
+            {/if}
           {/if}
         {/each}
       </div>
