@@ -33,6 +33,9 @@ export type TimelineAsset = {
   city: string | null;
   country: string | null;
   people: string[] | null;
+  // Album ids the asset belongs to. Only populated from time bucket responses, so it stays
+  // undefined for assets converted from an AssetResponseDto.
+  albums?: string[];
   latitude?: number | null;
   longitude?: number | null;
   noLocation?: boolean | null;

@@ -466,6 +466,8 @@
   "album_options": "Album options",
   "album_remove_user": "Remove user?",
   "album_remove_user_confirmation": "Are you sure you want to remove {user}?",
+  "album_rings_setting": "Album rings",
+  "album_rings_setting_description": "Outline timeline photos with a colour for each album they belong to",
   "album_search_not_found": "No albums found matching your search",
   "album_share_no_users": "Looks like you have shared this album with all users or you don't have any user to share with.",
   "album_summary": "Album summary",

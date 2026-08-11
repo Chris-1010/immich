@@ -229,6 +229,13 @@ export class TimeBucketAssetResponseDto {
     description: 'Array indicating whether each asset is deliberately marked as having no location',
   })
   noLocation!: boolean[];
+
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'array', items: { type: 'string' } },
+    description: 'Array of album IDs each asset belongs to, sorted by ID (empty array when in no album)',
+  })
+  albums!: string[][];
 }
 
 export class TimeBucketsResponseDto {

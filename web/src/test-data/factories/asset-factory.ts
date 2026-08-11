@@ -70,6 +70,7 @@ export const toResponseDto = (...timelineAsset: TimelineAsset[]) => {
     ratio: [],
     stack: [],
     thumbhash: [],
+    albums: [],
   };
   for (const asset of timelineAsset) {
     const fileCreatedAt = fromTimelinePlainDateTime(asset.fileCreatedAt).toISO();
@@ -88,6 +89,7 @@ export const toResponseDto = (...timelineAsset: TimelineAsset[]) => {
     bucketAssets.ratio.push(asset.ratio);
     bucketAssets.stack?.push(asset.stack ? [asset.stack.id, asset.stack.assetCount.toString()] : null);
     bucketAssets.thumbhash.push(asset.thumbhash!);
+    bucketAssets.albums.push(asset.albums ?? []);
   }
 
   return bucketAssets;

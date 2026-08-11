@@ -1666,6 +1666,8 @@ export type TagUpdateDto = {
     color?: string | null;
 };
 export type TimeBucketAssetResponseDto = {
+    /** Array of album IDs each asset belongs to, sorted by ID (empty array when in no album) */
+    albums: string[][];
     /** Array of city names extracted from EXIF GPS data */
     city: (string | null)[];
     /** Array of country names extracted from EXIF GPS data */

@@ -12,6 +12,7 @@
     locale,
     loopVideo,
     playVideoThumbnailOnHover,
+    showAlbumRings,
     showDeleteModal,
   } from '$lib/stores/preferences.store';
   import { createDateFormatter, findLocale } from '$lib/utils';
@@ -101,6 +102,13 @@
           title={$t('display_original_photos')}
           subtitle={$t('display_original_photos_setting_description')}
           bind:checked={$alwaysLoadOriginalFile}
+        />
+      </div>
+      <div class="ms-4">
+        <SettingSwitch
+          title={$t('album_rings_setting')}
+          subtitle={$t('album_rings_setting_description')}
+          bind:checked={$showAlbumRings}
         />
       </div>
       <div class="ms-4">

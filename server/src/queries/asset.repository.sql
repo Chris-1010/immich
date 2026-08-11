@@ -388,6 +388,21 @@ with
         end,
         1
       ) as "ratio",
+      coalesce(
+        (
+          select
+            json_agg(
+              album_asset."albumId"
+              order by
+                album_asset."albumId"
+            )
+          from
+            album_asset
+          where
+            album_asset."assetId" = asset.id
+        ),
+        '[]'::json
+      ) as "albums",
       "stack"
     from
       "asset"
@@ -437,6 +452,7 @@ with
       coalesce(array_agg("ratio"), '{}') as "ratio",
       coalesce(array_agg("status"), '{}') as "status",
       coalesce(array_agg("thumbhash"), '{}') as "thumbhash",
+      coalesce(json_agg("albums"), '[]') as "albums",
       coalesce(json_agg("stack"), '[]') as "stack"
     from
       "cte"

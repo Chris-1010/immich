@@ -190,6 +190,7 @@ export class MonthGroup {
           : null,
         thumbhash: bucketAssets.thumbhash[i],
         people: null, // People are not included in the bucket assets
+        albums: bucketAssets.albums?.[i] ?? [],
       };
 
       if (bucketAssets.latitude?.[i] && bucketAssets.longitude?.[i]) {

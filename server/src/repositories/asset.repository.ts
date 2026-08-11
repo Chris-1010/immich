@@ -772,6 +772,14 @@ export class AssetRepository {
                 eb.lit(1),
               )
               .as('ratio'),
+            sql<string[]>`coalesce(
+              (
+                select json_agg(album_asset."albumId" order by album_asset."albumId")
+                from album_asset
+                where album_asset."assetId" = asset.id
+              ),
+              '[]'::json
+            )`.as('albums'),
           ])
           .$if(!!options.withCoordinates, (qb) =>
             qb.select(['asset_exif.latitude', 'asset_exif.longitude', 'asset_exif.noLocation']),
@@ -851,6 +859,7 @@ export class AssetRepository {
             eb.fn.coalesce(eb.fn('array_agg', ['ratio']), sql.lit('{}')).as('ratio'),
             eb.fn.coalesce(eb.fn('array_agg', ['status']), sql.lit('{}')).as('status'),
             eb.fn.coalesce(eb.fn('array_agg', ['thumbhash']), sql.lit('{}')).as('thumbhash'),
+            eb.fn.coalesce(eb.fn('json_agg', ['albums']), sql.lit('[]')).as('albums'),
           ])
           .$if(!!options.withCoordinates, (qb) =>
             qb.select((eb) => [

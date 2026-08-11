@@ -22349,6 +22349,16 @@
       },
       "TimeBucketAssetResponseDto": {
         "properties": {
+          "albums": {
+            "description": "Array of album IDs each asset belongs to, sorted by ID (empty array when in no album)",
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
           "city": {
             "description": "Array of city names extracted from EXIF GPS data",
             "items": {
@@ -22498,6 +22508,7 @@
           }
         },
         "required": [
+          "albums",
           "city",
           "country",
           "duration",

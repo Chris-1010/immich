@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ProjectionType } from '$lib/constants';
-  import { locale, playVideoThumbnailOnHover } from '$lib/stores/preferences.store';
+  import { locale, playVideoThumbnailOnHover, showAlbumRings } from '$lib/stores/preferences.store';
   import { getAssetOriginalUrl, getAssetPlaybackUrl, getAssetThumbnailUrl } from '$lib/utils';
   import { timeToSeconds } from '$lib/utils/date-time';
   import { getAltText } from '$lib/utils/thumbnail-util';
@@ -18,6 +18,7 @@
 
   import { thumbhash } from '$lib/actions/thumbhash';
   import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { ALBUM_RING_WIDTH, getAlbumRingColors } from '$lib/utils/album-color';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { mobileDevice } from '$lib/stores/mobile-device.svelte';
   import { moveFocus } from '$lib/utils/focus-util';
@@ -86,6 +87,16 @@
 
   let width = $derived(thumbnailSize || thumbnailWidth || 235);
   let height = $derived(thumbnailSize || thumbnailHeight || 235);
+
+  // Album membership only reaches assets loaded from a time bucket, so rings are confined to the
+  // timeline and stay absent in the search and album gallery grids.
+  let ringColors = $derived($showAlbumRings ? getAlbumRingColors(asset.albums) : []);
+  let ringInset = $derived(ringColors.length * ALBUM_RING_WIDTH);
+  // Never eat more than a fifth of the shorter edge, so tiny thumbnails stay recognisable.
+  let inset = $derived(Math.min(ringInset, Math.floor(Math.min(width, height) / 5)));
+  let ringScale = $derived(ringInset === 0 ? 0 : inset / ringInset);
+  let contentWidth = $derived(width - 2 * inset);
+  let contentHeight = $derived(height - 2 * inset);
 
   let assetOwner = $derived(albumUsers?.find((user) => user.id === asset.ownerId) ?? null);
 
@@ -203,7 +214,8 @@
 <div
   class={[
     'focus-visible:outline-none flex overflow-hidden',
-    disabled ? 'bg-gray-300' : 'dark:bg-neutral-700 bg-neutral-200',
+    inset > 0 && 'rounded-lg',
+    disabled ? 'bg-gray-300' : inset === 0 && 'dark:bg-neutral-700 bg-neutral-200',
   ]}
   style:width="{width}px"
   style:height="{height}px"
@@ -237,10 +249,28 @@
     data-outline
   ></div>
 
+  <!-- Album rings: one rounded band per album, outermost first, nested down to the thumbnail -->
+  {#each ringColors as ringColor, ringIndex (ringIndex)}
+    <div
+      class="pointer-events-none absolute rounded-lg"
+      style:background-color={ringColor}
+      style:inset="{Math.round(ringIndex * ALBUM_RING_WIDTH * ringScale)}px"
+      data-album-ring
+    ></div>
+  {/each}
+
   <div
-    class={['group absolute top-0 bottom-0', { 'cursor-not-allowed': disabled, 'cursor-pointer': !disabled }]}
-    style:width="inherit"
-    style:height="inherit"
+    class={[
+      'group absolute',
+      { 'cursor-not-allowed': disabled, 'cursor-pointer': !disabled },
+      // The root keeps the placeholder tint when there are no rings; inside rings it moves here so
+      // the ring colours are what fills the margin.
+      inset > 0 && !disabled && 'dark:bg-neutral-700 bg-neutral-200 rounded-md',
+    ]}
+    style:top="{inset}px"
+    style:left="{inset}px"
+    style:width="{contentWidth}px"
+    style:height="{contentHeight}px"
   >
     <div
       class={[
@@ -337,9 +367,9 @@
         {brokenAssetClass}
         url={getAssetThumbnailUrl({ id: asset.id, size: AssetMediaSize.Thumbnail, cacheKey: asset.thumbhash })}
         altText={$getAltText(asset)}
-        widthStyle="{width}px"
-        heightStyle="{height}px"
-        curve={selected}
+        widthStyle="{contentWidth}px"
+        heightStyle="{contentHeight}px"
+        curve={selected || inset > 0}
         onComplete={(errored) => ((loaded = true), (thumbError = errored))}
       />
       {#if asset.isVideo}
@@ -347,7 +377,7 @@
           <VideoThumbnail
             url={getAssetPlaybackUrl({ id: asset.id, cacheKey: asset.thumbhash })}
             enablePlayback={mouseOver && $playVideoThumbnailOnHover}
-            curve={selected}
+            curve={selected || inset > 0}
             durationInSeconds={asset.duration ? timeToSeconds(asset.duration) : 0}
             playbackOnIconHover={!$playVideoThumbnailOnHover}
           />
@@ -360,7 +390,7 @@
             pauseIcon={mdiMotionPauseOutline}
             playIcon={mdiMotionPlayOutline}
             showTime={false}
-            curve={selected}
+            curve={selected || inset > 0}
             playbackOnIconHover={!$playVideoThumbnailOnHover}
           />
         </div>
@@ -373,9 +403,9 @@
             {brokenAssetClass}
             url={getAssetOriginalUrl({ id: asset.id, cacheKey: asset.thumbhash })}
             altText={$getAltText(asset)}
-            widthStyle="{width}px"
-            heightStyle="{height}px"
-            curve={selected}
+            widthStyle="{contentWidth}px"
+            heightStyle="{contentHeight}px"
+            curve={selected || inset > 0}
           />
           <div class="absolute end-0 top-0 flex place-items-center gap-1 text-xs font-medium text-white">
             <span class="pe-2 pt-2">
@@ -390,8 +420,8 @@
           use:thumbhash={{ base64ThumbHash: asset.thumbhash }}
           data-testid="thumbhash"
           class="absolute top-0 object-cover"
-          style:width="{width}px"
-          style:height="{height}px"
+          style:width="{contentWidth}px"
+          style:height="{contentHeight}px"
           class:rounded-xl={selected}
           draggable="false"
           out:fade={{ duration: THUMBHASH_FADE_DURATION }}
