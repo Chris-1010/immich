@@ -928,6 +928,65 @@ export type PersonUpdateDto = {
     /** Person name. */
     name?: string;
 };
+export type PersonDetailPairResponseDto = {
+    key: string;
+    value: string;
+};
+export type AlongWithPersonResponseDto = {
+    id: string;
+    name: string;
+    /** The subject's other detail keys this person also records, named as the subject writes them.
+    Empty for someone who has this one pair in common and nothing else. */
+    sharedKeys: string[];
+    /** The subdetails both record under this very pair, named as the subject writes them.
+    
+    This is the narrow answer where `sharedKeys` is the broad one. Two people who both attended a
+    school and were both in the year of 2016 have "Class of 2016" here on the school's group, which
+    is what marks them out from the rest of the alumni. */
+    sharedSubdetails: PersonDetailPairResponseDto[];
+};
+export type AlongWithResponseDto = {
+    people: AlongWithPersonResponseDto[];
+    /** The size of the whole group, which is larger than `people` once the cap is reached. The count
+    behind a `+N` is this, not the length of the list. */
+    total: number;
+};
+export type PersonSubdetailResponseDto = {
+    id: string;
+    key: string;
+    sortOrder: number;
+    value: string;
+};
+export type PersonDetailResponseDto = {
+    alongWith: AlongWithResponseDto;
+    /** When the detail was first recorded. The box shows it on hover, as an age beside the date. */
+    createdAt: string;
+    id: string;
+    key: string;
+    sortOrder: number;
+    subdetails: PersonSubdetailResponseDto[];
+    value: string;
+};
+export type PersonSubdetailUpsertDto = {
+    /** The row being edited. Absent on a subdetail that does not exist yet. */
+    id?: string;
+    key: string;
+    value: string;
+};
+export type PersonDetailUpsertDto = {
+    /** The row being edited. Absent on a subdetail that does not exist yet. */
+    id?: string;
+    key: string;
+    /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
+    one level deep, which is why these carry no subdetails of their own. */
+    subdetails?: PersonSubdetailUpsertDto[];
+    value: string;
+};
+export type PersonDetailsUpdateDto = {
+    /** The person's whole list, in the order it should be shown. Position in the array is position on
+    the page, and anything missing from it is deleted — the array is the list, not a patch to it. */
+    details: PersonDetailUpsertDto[];
+};
 export type MergePersonDto = {
     ids: string[];
 };
@@ -940,6 +999,42 @@ export type AssetFaceUpdateDto = {
 };
 export type PersonStatisticsResponseDto = {
     assets: number;
+};
+export type PersonDetailBulkItemDto = {
+    /** The row being edited. Absent on a subdetail that does not exist yet. */
+    id?: string;
+    key: string;
+    /** Who among the people named by the request should have their existing value under this key
+    overwritten rather than gaining a second row. Everyone else keeps what they had. */
+    replaceForPersonIds?: string[];
+    /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
+    one level deep, which is why these carry no subdetails of their own. */
+    subdetails?: PersonSubdetailUpsertDto[];
+    value: string;
+};
+export type PersonDetailsBulkAddDto = {
+    /** Added to what each person already holds. Nothing here ever removes a detail they have. */
+    details: PersonDetailBulkItemDto[];
+    personIds: string[];
+};
+export type PersonDetailConflictSearchDto = {
+    /** Matched with casing ignored, the same way details are matched everywhere else. */
+    keys: string[];
+    personIds: string[];
+};
+export type PersonDetailConflictPersonResponseDto = {
+    id: string;
+    name: string;
+    value: string;
+};
+export type PersonDetailConflictResponseDto = {
+    /** The key as it was asked about, so the client can match a row to its answer. */
+    key: string;
+    people: PersonDetailConflictPersonResponseDto[];
+};
+export type PersonDetailSuggestionResponseDto = {
+    count: number;
+    value: string;
 };
 export type PluginActionResponseDto = {
     description: string;
@@ -3685,6 +3780,35 @@ export function updatePerson({ id, personUpdateDto }: {
     })));
 }
 /**
+ * List a person's details
+ */
+export function getPersonDetails({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonDetailResponseDto[];
+    }>(`/people/${encodeURIComponent(id)}/details`, {
+        ...opts
+    }));
+}
+/**
+ * Replace a person's details
+ */
+export function updatePersonDetails({ id, personDetailsUpdateDto }: {
+    id: string;
+    personDetailsUpdateDto: PersonDetailsUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonDetailResponseDto[];
+    }>(`/people/${encodeURIComponent(id)}/details`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: personDetailsUpdateDto
+    })));
+}
+/**
  * Merge people
  */
 export function mergePerson({ id, mergePersonDto }: {
@@ -3739,6 +3863,73 @@ export function getPersonThumbnail({ id }: {
         status: 200;
         data: Blob;
     }>(`/people/${encodeURIComponent(id)}/thumbnail`, {
+        ...opts
+    }));
+}
+/**
+ * Add details to several people
+ */
+export function addPersonDetails({ personDetailsBulkAddDto }: {
+    personDetailsBulkAddDto: PersonDetailsBulkAddDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText("/person-details/bulk", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: personDetailsBulkAddDto
+    })));
+}
+/**
+ * Find people already recording a detail key
+ */
+export function getPersonDetailConflicts({ personDetailConflictSearchDto }: {
+    personDetailConflictSearchDto: PersonDetailConflictSearchDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonDetailConflictResponseDto[];
+    }>("/person-details/conflicts", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: personDetailConflictSearchDto
+    })));
+}
+/**
+ * Suggest detail keys
+ */
+export function getPersonDetailKeys({ limit, parentKey, term }: {
+    limit?: number;
+    parentKey?: string;
+    term?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonDetailSuggestionResponseDto[];
+    }>(`/person-details/keys${QS.query(QS.explode({
+        limit,
+        parentKey,
+        term
+    }))}`, {
+        ...opts
+    }));
+}
+/**
+ * Suggest detail values
+ */
+export function getPersonDetailValues({ detailKey, limit, parentKey, term }: {
+    detailKey: string;
+    limit?: number;
+    parentKey?: string;
+    term?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonDetailSuggestionResponseDto[];
+    }>(`/person-details/values${QS.query(QS.explode({
+        detailKey,
+        limit,
+        parentKey,
+        term
+    }))}`, {
         ...opts
     }));
 }
@@ -5559,6 +5750,8 @@ export enum Permission {
     RelationshipTypeRead = "relationshipType.read",
     RelationshipTypeUpdate = "relationshipType.update",
     RelationshipTypeDelete = "relationshipType.delete",
+    PersonDetailRead = "personDetail.read",
+    PersonDetailUpdate = "personDetail.update",
     ServerAbout = "server.about",
     ServerApkLinks = "server.apkLinks",
     ServerStorage = "server.storage",

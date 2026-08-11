@@ -7704,6 +7704,132 @@
         "x-immich-state": "Stable"
       }
     },
+    "/people/{id}/details": {
+      "get": {
+        "description": "Retrieve everything recorded about a person as a key and a value, in the order the page shows them. Each one carries its subdetails and the other people who record the same key and value, matched with the casing and surrounding spaces ignored. Those people are ordered by how much else they have in common, subdetails of this very pair counting ahead of details shared anywhere.",
+        "operationId": "getPersonDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDetailResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List a person's details",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.read",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Write the whole list at once, subdetails included. The array sent is what the person ends up with and its order is the order shown, so anything left out is deleted. A key already used elsewhere in the library is stored with the casing the library already uses, and entries blank at either end are dropped rather than rejected.",
+        "operationId": "updatePersonDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonDetailsUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDetailResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Replace a person's details",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/people/{id}/merge": {
       "post": {
         "description": "Merge a list of people into the person specified in the path parameter.",
@@ -7969,6 +8095,277 @@
         ],
         "x-immich-permission": "person.read",
         "x-immich-state": "Stable"
+      }
+    },
+    "/person-details/bulk": {
+      "post": {
+        "description": "Write the same details onto every person named, adding to what each already holds rather than replacing it. A person already recording the exact key and value keeps the entry they have and only gains its subdetails; a person named under the key's replaceForPersonIds has their existing value rewritten; everyone else gains an entry at the end of their list.",
+        "operationId": "addPersonDetails",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonDetailsBulkAddDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Add details to several people",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/person-details/conflicts": {
+      "post": {
+        "description": "Retrieve which of the given people already record each of the given keys and what they record under it, so a bulk insert can be told apart from a bulk overwrite before anything is written. Keys are matched with their casing ignored, and someone holding a key twice is reported by the entry a replacement would rewrite. A key nobody holds is left out of the response entirely.",
+        "operationId": "getPersonDetailConflicts",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonDetailConflictSearchDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDetailConflictResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Find people already recording a detail key",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/person-details/keys": {
+      "get": {
+        "description": "Retrieve the keys already used anywhere in the library, most used first, matched anywhere in the text rather than only at the start. A key written in more than one casing is offered once, in the casing it is most often written in. Only top-level keys are offered unless a parent key is given, in which case only the keys already written as subdetails of it are.",
+        "operationId": "getPersonDetailKeys",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "parentKey",
+            "required": false,
+            "in": "query",
+            "description": "The key of the detail a subdetail is being typed under. Without it only top-level keys are\noffered, since \"Class of\" is not a fact about a person on its own.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "required": false,
+            "in": "query",
+            "description": "Matched anywhere in the text, not only at the start: \"name\" finds both \"Nickname\" and \"Maiden name\".",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDetailSuggestionResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Suggest detail keys",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/person-details/values": {
+      "get": {
+        "description": "Retrieve the values already recorded under one key, ranked, matched and scoped the same way as the keys are. The key is matched with its casing ignored.",
+        "operationId": "getPersonDetailValues",
+        "parameters": [
+          {
+            "name": "detailKey",
+            "required": true,
+            "in": "query",
+            "description": "The key whose values are wanted, since \"Cork\" means nothing without \"Hometown\" above it.\n\nNamed `detailKey` rather than `key`: a query parameter called `key` is how a shared link\nannounces itself, so the guard would try to log the request in as one and turn a search for\n\"Secondary School\" into \"Invalid share key\" before the controller ever ran.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "parentKey",
+            "required": false,
+            "in": "query",
+            "description": "The key of the detail a subdetail is being typed under. Without it only top-level keys are\noffered, since \"Class of\" is not a fact about a person on its own.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "term",
+            "required": false,
+            "in": "query",
+            "description": "Matched anywhere in the text, not only at the start: \"name\" finds both \"Nickname\" and \"Maiden name\".",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDetailSuggestionResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Suggest detail values",
+        "tags": [
+          "PersonDetails"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "personDetail.read",
+        "x-immich-state": "Alpha"
       }
     },
     "/plugins": {
@@ -15080,6 +15477,10 @@
       "description": "A person is a collection of faces, which can be favorited and named. A person can also be merged into another person. People are automatically created via the face recognition job."
     },
     {
+      "name": "PersonDetails",
+      "description": "A detail is one free-text fact recorded against a person, as a key and a value such as \"Hometown\" and \"Cork\". Keys are not drawn from a fixed vocabulary: they are suggested from the keys already in use across the library, and a key typed in different casing is stored with the casing the library already uses. Details are also what links people to each other by shared facts, since everyone recording the same key and value is grouped together."
+    },
+    {
       "name": "Plugins",
       "description": "A plugin is an installed module that makes filters and actions available for the workflow feature."
     },
@@ -15611,6 +16012,56 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "AlongWithPersonResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sharedKeys": {
+            "description": "The subject's other detail keys this person also records, named as the subject writes them.\nEmpty for someone who has this one pair in common and nothing else.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sharedSubdetails": {
+            "description": "The subdetails both record under this very pair, named as the subject writes them.\n\nThis is the narrow answer where `sharedKeys` is the broad one. Two people who both attended a\nschool and were both in the year of 2016 have \"Class of 2016\" here on the school's group, which\nis what marks them out from the rest of the alumni.",
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailPairResponseDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sharedKeys",
+          "sharedSubdetails"
+        ],
+        "type": "object"
+      },
+      "AlongWithResponseDto": {
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/AlongWithPersonResponseDto"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "The size of the whole group, which is larger than `people` once the cap is reached. The count\nbehind a `+N` is this, not the length of the list.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "people",
+          "total"
+        ],
         "type": "object"
       },
       "AssetBulkDeleteDto": {
@@ -18699,6 +19150,8 @@
           "relationshipType.read",
           "relationshipType.update",
           "relationshipType.delete",
+          "personDetail.read",
+          "personDetail.update",
           "server.about",
           "server.apkLinks",
           "server.storage",
@@ -18791,6 +19244,244 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PersonDetailBulkItemDto": {
+        "properties": {
+          "id": {
+            "description": "The row being edited. Absent on a subdetail that does not exist yet.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "replaceForPersonIds": {
+            "description": "Who among the people named by the request should have their existing value under this key\noverwritten rather than gaining a second row. Everyone else keeps what they had.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subdetails": {
+            "description": "What qualifies this detail rather than the person: \"Class of\" and \"2016\" under a school. Only\none level deep, which is why these carry no subdetails of their own.",
+            "items": {
+              "$ref": "#/components/schemas/PersonSubdetailUpsertDto"
+            },
+            "type": "array"
+          },
+          "value": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailConflictPersonResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailConflictResponseDto": {
+        "properties": {
+          "key": {
+            "description": "The key as it was asked about, so the client can match a row to its answer.",
+            "type": "string"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailConflictPersonResponseDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "people"
+        ],
+        "type": "object"
+      },
+      "PersonDetailConflictSearchDto": {
+        "properties": {
+          "keys": {
+            "description": "Matched with casing ignored, the same way details are matched everywhere else.",
+            "items": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "personIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys",
+          "personIds"
+        ],
+        "type": "object"
+      },
+      "PersonDetailPairResponseDto": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailResponseDto": {
+        "properties": {
+          "alongWith": {
+            "$ref": "#/components/schemas/AlongWithResponseDto"
+          },
+          "createdAt": {
+            "description": "When the detail was first recorded. The box shows it on hover, as an age beside the date.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer"
+          },
+          "subdetails": {
+            "items": {
+              "$ref": "#/components/schemas/PersonSubdetailResponseDto"
+            },
+            "type": "array"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "alongWith",
+          "createdAt",
+          "id",
+          "key",
+          "sortOrder",
+          "subdetails",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailSuggestionResponseDto": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailUpsertDto": {
+        "properties": {
+          "id": {
+            "description": "The row being edited. Absent on a subdetail that does not exist yet.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "subdetails": {
+            "description": "What qualifies this detail rather than the person: \"Class of\" and \"2016\" under a school. Only\none level deep, which is why these carry no subdetails of their own.",
+            "items": {
+              "$ref": "#/components/schemas/PersonSubdetailUpsertDto"
+            },
+            "type": "array"
+          },
+          "value": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonDetailsBulkAddDto": {
+        "properties": {
+          "details": {
+            "description": "Added to what each person already holds. Nothing here ever removes a detail they have.",
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailBulkItemDto"
+            },
+            "type": "array"
+          },
+          "personIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "details",
+          "personIds"
+        ],
+        "type": "object"
+      },
+      "PersonDetailsUpdateDto": {
+        "properties": {
+          "details": {
+            "description": "The person's whole list, in the order it should be shown. Position in the array is position on\nthe page, and anything missing from it is deleted — the array is the list, not a patch to it.",
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailUpsertDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "details"
+        ],
         "type": "object"
       },
       "PersonGenderResponseDto": {
@@ -18929,6 +19620,51 @@
         },
         "required": [
           "assets"
+        ],
+        "type": "object"
+      },
+      "PersonSubdetailResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "sortOrder",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PersonSubdetailUpsertDto": {
+        "properties": {
+          "id": {
+            "description": "The row being edited. Absent on a subdetail that does not exist yet.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 1000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
         ],
         "type": "object"
       },
