@@ -10,6 +10,7 @@
   import SearchPeople from '$lib/components/faces-page/people-search.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
   import { ActionQueryParameterValue, AppRoute, QueryParameter, SessionStorageKey } from '$lib/constants';
+  import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
   import PersonEditBirthDateModal from '$lib/modals/PersonEditBirthDateModal.svelte';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
   import { locale } from '$lib/stores/preferences.store';
@@ -18,6 +19,7 @@
   import { handleError } from '$lib/utils/handle-error';
   import { clearQueryParam } from '$lib/utils/navigation';
   import { loadPersonGenders } from '$lib/utils/person-gender';
+  import { idsInRange } from '$lib/utils/range-select';
   import {
     getAllPeople,
     getPerson,
@@ -27,7 +29,7 @@
     type RelationshipGender,
   } from '@immich/sdk';
   import { Button, Icon, modalManager, toastManager } from '@immich/ui';
-  import { mdiAccountOff, mdiEyeOutline } from '@mdi/js';
+  import { mdiAccountOff, mdiEyeOutline, mdiTagPlusOutline } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { quintOut } from 'svelte/easing';
@@ -41,6 +43,23 @@
   let { data }: Props = $props();
 
   let selectHidden = $state(false);
+
+  /** Picking people to write the same details onto, rather than opening one of them. */
+  let bulkDetails = $state(false);
+
+  /**
+   * The people picked, held as the objects themselves rather than as ids read back out of the grid.
+   *
+   * Searching narrows the grid, so a pick that lived there would quietly disappear the moment a name
+   * was typed — the count would still claim fifteen people while only the two matching the search
+   * were written to. Picks are made across as many searches as it takes and survive all of them.
+   */
+  let selected = $state<PersonResponseDto[]>([]);
+  let selectedIds = $derived(new Set(selected.map((person) => person.id)));
+
+  /** The last person picked on their own, which is the end a shift-click draws its range from. */
+  let anchorId = $state<string>();
+
   let searchName = $state('');
   let newName = $state('');
   let currentPage = $state(1);
@@ -306,6 +325,52 @@
     newName = '';
   };
 
+  // Ordered by where each person sits in the full list rather than by when they were ticked. Anyone
+  // picked out of a search that the full list has not loaded has no place in it, so they keep the
+  // order they were picked in, at the end.
+  let selectedPeople = $derived.by(() => {
+    const order = new Map(people.map((person, index) => [person.id, index]));
+
+    return [...selected].sort(
+      (a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  });
+
+  const handleToggleBulkDetails = () => {
+    bulkDetails = !bulkDetails;
+    selected = [];
+    anchorId = undefined;
+  };
+
+  const handleSelect = (event: MouseEvent, person: PersonResponseDto) => {
+    // Shift takes everyone from the last one picked to this one, over the list as it stands, so a
+    // search narrows what a range can reach. The anchor stays put afterwards, so the same range can
+    // be redrawn shorter or longer without starting again.
+    if (event.shiftKey && anchorId) {
+      const range = new Set(idsInRange(showPeople, anchorId, person.id));
+      selected = [...selected, ...showPeople.filter((other) => range.has(other.id) && !selectedIds.has(other.id))];
+      return;
+    }
+
+    // Ctrl and Cmd are what gather people up elsewhere, and they still do here — but so does a
+    // plain click, since there is nothing else for one to mean once the mode is on.
+    selected = selectedIds.has(person.id) ? selected.filter((other) => other.id !== person.id) : [...selected, person];
+    anchorId = person.id;
+  };
+
+  const handleAddDetails = async () => {
+    // An array back means it was applied and an absent one means it was cancelled, which is the
+    // only thing the page needs to tell apart — the details themselves belong to other people.
+    const count = selectedPeople.length;
+    const applied = await modalManager.show(PersonDetailsModal, { people: selectedPeople });
+    if (!applied) {
+      return;
+    }
+
+    toastManager.success($t('details_added_to_people', { values: { count } }));
+    handleToggleBulkDetails();
+  };
+
   const findPeopleWithSimilarName = async (name: string, personId: string) => {
     const searchResult = await searchPerson({ name, withHidden: true });
     return searchResult.find(
@@ -353,6 +418,26 @@
             />
           </div>
         </div>
+        <!-- Only while the mode is on, so the button that does the work appears where the button
+             that started it was, rather than sitting greyed out until something is picked. -->
+        {#if bulkDetails && selected.length > 0}
+          <Button leadingIcon={mdiTagPlusOutline} onclick={handleAddDetails} size="small">
+            {$t('bulk_add_details')}
+          </Button>
+        {/if}
+
+        <Button
+          leadingIcon={mdiTagPlusOutline}
+          onclick={handleToggleBulkDetails}
+          size="small"
+          variant={bulkDetails ? 'filled' : 'ghost'}
+          color="secondary"
+        >
+          {bulkDetails && selected.length > 0
+            ? $t('people_selected_count', { values: { count: selected.length } })
+            : $t('bulk_detail_insertion')}
+        </Button>
+
         <Button
           leadingIcon={mdiEyeOutline}
           onclick={() => (selectHidden = !selectHidden)}
@@ -370,25 +455,48 @@
         <div
           class="p-2 rounded-xl hover:bg-gray-200 border-2 hover:border-immich-primary/50 hover:shadow-sm dark:hover:bg-immich-dark-primary/20 hover:dark:border-immich-dark-primary/25 border-transparent transition-all"
         >
-          <PeopleCard
-            {person}
-            gender={genders[person.id]}
-            onSetBirthDate={() => handleChangeBirthDate(person)}
-            onMergePeople={() => handleMergePeople(person)}
-            onHidePerson={() => handleHidePerson(person)}
-            onToggleFavorite={() => handleToggleFavorite(person)}
-          />
+          {#snippet card()}
+            <PeopleCard
+              {person}
+              gender={genders[person.id]}
+              selecting={bulkDetails}
+              selected={selectedIds.has(person.id)}
+              onSetBirthDate={() => handleChangeBirthDate(person)}
+              onMergePeople={() => handleMergePeople(person)}
+              onHidePerson={() => handleHidePerson(person)}
+              onToggleFavorite={() => handleToggleFavorite(person)}
+            />
+          {/snippet}
 
-          <input
-            type="text"
-            class=" bg-white dark:bg-immich-dark-gray border-gray-100 placeholder-gray-400 text-center dark:border-gray-900 w-full rounded-2xl mt-2 py-2 text-sm text-primary"
-            value={person.name}
-            placeholder={$t('add_a_name')}
-            use:shortcut={{ shortcut: { key: 'Enter' }, onShortcut: (e) => e.currentTarget.blur() }}
-            onfocusin={() => onNameChangeInputFocus(person)}
-            onfocusout={() => onNameChangeSubmit(newName, person)}
-            oninput={(event) => onNameChangeInputUpdate(event)}
-          />
+          {#if bulkDetails}
+            <button
+              type="button"
+              class="w-full select-none"
+              aria-pressed={selectedIds.has(person.id)}
+              onclick={(event) => handleSelect(event, person)}
+            >
+              {@render card()}
+            </button>
+
+            <!-- The name is still worth reading while picking, but not worth editing: a click on a
+                 card is a pick, and a field that swallowed one would be a hole in the grid. -->
+            <p class="mt-2 w-full truncate py-2 text-center text-sm text-primary">
+              {person.name || $t('add_a_name')}
+            </p>
+          {:else}
+            {@render card()}
+
+            <input
+              type="text"
+              class=" bg-white dark:bg-immich-dark-gray border-gray-100 placeholder-gray-400 text-center dark:border-gray-900 w-full rounded-2xl mt-2 py-2 text-sm text-primary"
+              value={person.name}
+              placeholder={$t('add_a_name')}
+              use:shortcut={{ shortcut: { key: 'Enter' }, onShortcut: (e) => e.currentTarget.blur() }}
+              onfocusin={() => onNameChangeInputFocus(person)}
+              onfocusout={() => onNameChangeSubmit(newName, person)}
+              oninput={(event) => onNameChangeInputUpdate(event)}
+            />
+          {/if}
         </div>
       {/snippet}
     </PeopleInfiniteScroll>
