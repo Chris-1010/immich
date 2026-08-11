@@ -23,6 +23,7 @@ export const assetFactory = Sync.makeFactory<AssetResponseDto>({
   isFavorite: Sync.each(() => faker.datatype.boolean()),
   isArchived: false,
   isTrashed: false,
+  deletedAt: null,
   duration: '0:00:00.00000',
   checksum: Sync.each(() => faker.string.alphanumeric(28)),
   isOffline: Sync.each(() => faker.datatype.boolean()),

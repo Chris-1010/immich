@@ -8,7 +8,7 @@ import * as Oazapfts from "@oazapfts/runtime";
 import * as QS from "@oazapfts/runtime/query";
 export const defaults: Oazapfts.Defaults<Oazapfts.CustomHeaders> = {
     headers: {},
-    baseUrl: "/api",
+    baseUrl: "/api"
 };
 const oazapfts = Oazapfts.runtime(defaults);
 export const servers = {
@@ -4734,7 +4734,7 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
+export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4748,9 +4748,9 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
-    withoutCoordinates?: boolean;
     withPartners?: boolean;
     withStacked?: boolean;
+    withoutCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
@@ -4769,9 +4769,9 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
         userId,
         visibility,
         withCoordinates,
-        withoutCoordinates,
         withPartners,
-        withStacked
+        withStacked,
+        withoutCoordinates
     }))}`, {
         ...opts
     }));
@@ -4779,7 +4779,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withoutCoordinates, withPartners, withStacked }: {
+export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -4792,9 +4792,9 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
     userId?: string;
     visibility?: AssetVisibility;
     withCoordinates?: boolean;
-    withoutCoordinates?: boolean;
     withPartners?: boolean;
     withStacked?: boolean;
+    withoutCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
@@ -4812,9 +4812,9 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
         userId,
         visibility,
         withCoordinates,
-        withoutCoordinates,
         withPartners,
-        withStacked
+        withStacked,
+        withoutCoordinates
     }))}`, {
         ...opts
     }));
@@ -5179,11 +5179,6 @@ export enum UserStatus {
 export enum AssetOrder {
     Asc = "asc",
     Desc = "desc"
-}
-export enum TimeBucketField {
-    DateTaken = "dateTaken",
-    DateAdded = "dateAdded",
-    DateDeleted = "dateDeleted"
 }
 export enum AssetVisibility {
     Archive = "archive",
@@ -5658,6 +5653,11 @@ export enum LogLevel {
 export enum OAuthTokenEndpointAuthMethod {
     ClientSecretPost = "client_secret_post",
     ClientSecretBasic = "client_secret_basic"
+}
+export enum TimeBucketField {
+    DateTaken = "dateTaken",
+    DateAdded = "dateAdded",
+    DateDeleted = "dateDeleted"
 }
 export enum TriggerType {
     AssetCreate = "AssetCreate",

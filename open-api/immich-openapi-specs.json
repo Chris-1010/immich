@@ -12675,6 +12675,15 @@
             }
           },
           {
+            "name": "timeBucketField",
+            "required": false,
+            "in": "query",
+            "description": "Field to group and sort time buckets by (dateTaken, dateAdded or dateDeleted)",
+            "schema": {
+              "$ref": "#/components/schemas/TimeBucketField"
+            }
+          },
+          {
             "name": "userId",
             "required": false,
             "in": "query",
@@ -12716,6 +12725,15 @@
             "required": false,
             "in": "query",
             "description": "Include stacked assets in the response. When true, only primary assets from stacks are returned.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "withoutCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets without GPS coordinates",
             "schema": {
               "type": "boolean"
             }
@@ -12841,6 +12859,15 @@
             }
           },
           {
+            "name": "timeBucketField",
+            "required": false,
+            "in": "query",
+            "description": "Field to group and sort time buckets by (dateTaken, dateAdded or dateDeleted)",
+            "schema": {
+              "$ref": "#/components/schemas/TimeBucketField"
+            }
+          },
+          {
             "name": "userId",
             "required": false,
             "in": "query",
@@ -12882,6 +12909,15 @@
             "required": false,
             "in": "query",
             "description": "Include stacked assets in the response. When true, only primary assets from stacks are returned.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "withoutCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets without GPS coordinates",
             "schema": {
               "type": "boolean"
             }
@@ -14927,6 +14963,9 @@
           "longitude": {
             "type": "number"
           },
+          "noLocation": {
+            "type": "boolean"
+          },
           "rating": {
             "maximum": 5,
             "minimum": -1,
@@ -15675,6 +15714,13 @@
             "format": "date-time",
             "type": "string"
           },
+          "deletedAt": {
+            "description": "The UTC timestamp when the asset was moved to the trash, or null when it is not trashed.",
+            "example": "2024-01-16T12:45:30.000Z",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
           "deviceAssetId": {
             "type": "string"
           },
@@ -15831,6 +15877,7 @@
         "required": [
           "checksum",
           "createdAt",
+          "deletedAt",
           "deviceAssetId",
           "deviceId",
           "duration",
@@ -16479,6 +16526,11 @@
             "format": "date-time",
             "nullable": true,
             "type": "string"
+          },
+          "noLocation": {
+            "default": null,
+            "nullable": true,
+            "type": "boolean"
           },
           "orientation": {
             "default": null,
@@ -22387,6 +22439,13 @@
             },
             "type": "array"
           },
+          "noLocation": {
+            "description": "Array indicating whether each asset is deliberately marked as having no location",
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array"
+          },
           "ownerId": {
             "description": "Array of owner IDs for each asset",
             "items": {
@@ -22456,6 +22515,14 @@
           "visibility"
         ],
         "type": "object"
+      },
+      "TimeBucketField": {
+        "enum": [
+          "dateTaken",
+          "dateAdded",
+          "dateDeleted"
+        ],
+        "type": "string"
       },
       "TimeBucketsResponseDto": {
         "properties": {
@@ -22577,6 +22644,9 @@
           },
           "longitude": {
             "type": "number"
+          },
+          "noLocation": {
+            "type": "boolean"
           },
           "rating": {
             "maximum": 5,
