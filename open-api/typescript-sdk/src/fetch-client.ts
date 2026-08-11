@@ -989,6 +989,94 @@ export type QueueJobResponseDto = {
     name: JobName;
     timestamp: number;
 };
+export type RelationshipCreateDto = {
+    /** The other person: the one the type describes. */
+    counterpartId: string;
+    /** The person whose page the relationship is being added from. */
+    subjectId: string;
+    typeId: string;
+};
+export type RelationshipResponseDto = {
+    counterpartId: string;
+    id: string;
+    inverseId: string;
+    inverseName: string;
+    subjectId: string;
+    typeId: string;
+    typeName: string;
+};
+export type PersonGenderResponseDto = {
+    gender: RelationshipGender;
+    personId: string;
+};
+export type PersonRelationshipResponseDto = {
+    id: string;
+    /** What this label states about the person whose page it is read from. The type names the other
+    person, so it is the inverse that speaks for this one: a "Father" here means a son or a
+    daughter there. Null when the inverse names no gender. */
+    inverseGender: (RelationshipGender) | null;
+    inverseId: string;
+    inverseName: string;
+    typeId: string;
+    typeName: string;
+};
+export type RelatedPersonResponseDto = {
+    id: string;
+    name: string;
+    relationships: PersonRelationshipResponseDto[];
+    thumbnailPath: string;
+};
+export type CoAppearanceResponseDto = {
+    /** What the labels this person already holds state about them, or null when nothing about them is
+    known yet. A gender is never recorded against a person directly, only implied by their
+    relationships, so labels that disagree state nothing between them. */
+    gender: (RelationshipGender) | null;
+    id: string;
+    name: string;
+    sharedAssets: number;
+    thumbnailPath: string;
+};
+export type RelationshipOrderUpdateDto = {
+    /** Everyone on the page, in the order they should appear. Position in the array is the position
+    on the page. Anyone omitted goes back to being placed by relationship type. */
+    relatedPersonIds: string[];
+};
+export type RelationshipTypeResponseDto = {
+    id: string;
+    /** Equal to `id` when the type is symmetric. */
+    inverseId: string;
+    inverseName: string;
+    maxAgeGap: number | null;
+    /** How much older the counterpart is expected to be, in signed years. Null when age says nothing. */
+    minAgeGap: number | null;
+    name: string;
+    /** Whether the age difference between the two people the list was requested for fits this type.
+    Always false when no pair was given, or when either of them has no birth date. */
+    suggested: boolean;
+};
+export type RelationshipTypeCreateDto = {
+    /** A blank opposite makes the type symmetric: its inverse is itself. */
+    inverseName?: string | null;
+    maxAgeGap?: number | null;
+    minAgeGap?: number | null;
+    name: string;
+};
+export type RelationshipTypeUsageResponseDto = {
+    personCount: number;
+    relationshipCount: number;
+};
+export type RelationshipTypeUpdateDto = {
+    inverseName?: string;
+    maxAgeGap?: number | null;
+    minAgeGap?: number | null;
+    name?: string;
+};
+export type RelationshipUpdateDto = {
+    /** The person the relabelled type is read from. A stored relationship is rendered from both
+    ends, so the new type only means something once the end it was chosen from is known. */
+    subjectId: string;
+    typeId: string;
+};
 export type SearchExploreItem = {
     data: AssetResponseDto;
     value: string;
@@ -3748,6 +3836,173 @@ export function getQueueJobs({ name, status }: {
     }));
 }
 /**
+ * Create a relationship
+ */
+export function createRelationship({ relationshipCreateDto }: {
+    relationshipCreateDto: RelationshipCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: RelationshipResponseDto;
+    }>("/relationships", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: relationshipCreateDto
+    })));
+}
+/**
+ * List the genders relationships state
+ */
+export function getPersonGenders(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: PersonGenderResponseDto[];
+    }>("/relationships/genders", {
+        ...opts
+    }));
+}
+/**
+ * List a person's relationships
+ */
+export function getRelatedPeople({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelatedPersonResponseDto[];
+    }>(`/relationships/people/${encodeURIComponent(id)}`, {
+        ...opts
+    }));
+}
+/**
+ * List candidate counterparts
+ */
+export function getCoAppearances({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: CoAppearanceResponseDto[];
+    }>(`/relationships/people/${encodeURIComponent(id)}/co-appearances`, {
+        ...opts
+    }));
+}
+/**
+ * Reorder a person's relationships
+ */
+export function setRelatedPeopleOrder({ id, relationshipOrderUpdateDto }: {
+    id: string;
+    relationshipOrderUpdateDto: RelationshipOrderUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/relationships/people/${encodeURIComponent(id)}/order`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: relationshipOrderUpdateDto
+    })));
+}
+/**
+ * List relationship types
+ */
+export function getRelationshipTypes({ counterpartId, subjectId }: {
+    counterpartId?: string;
+    subjectId?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelationshipTypeResponseDto[];
+    }>(`/relationships/types${QS.query(QS.explode({
+        counterpartId,
+        subjectId
+    }))}`, {
+        ...opts
+    }));
+}
+/**
+ * Create a relationship type
+ */
+export function createRelationshipType({ relationshipTypeCreateDto }: {
+    relationshipTypeCreateDto: RelationshipTypeCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: RelationshipTypeResponseDto;
+    }>("/relationships/types", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: relationshipTypeCreateDto
+    })));
+}
+/**
+ * Delete a relationship type
+ */
+export function deleteRelationshipType({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelationshipTypeUsageResponseDto;
+    }>(`/relationships/types/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Rename a relationship type
+ */
+export function updateRelationshipType({ id, relationshipTypeUpdateDto }: {
+    id: string;
+    relationshipTypeUpdateDto: RelationshipTypeUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelationshipTypeResponseDto;
+    }>(`/relationships/types/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: relationshipTypeUpdateDto
+    })));
+}
+/**
+ * Retrieve relationship type usage
+ */
+export function getRelationshipTypeUsage({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelationshipTypeUsageResponseDto;
+    }>(`/relationships/types/${encodeURIComponent(id)}/usage`, {
+        ...opts
+    }));
+}
+/**
+ * Delete a relationship
+ */
+export function deleteRelationship({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/relationships/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Relabel a relationship
+ */
+export function updateRelationship({ id, relationshipUpdateDto }: {
+    id: string;
+    relationshipUpdateDto: RelationshipUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: RelationshipResponseDto;
+    }>(`/relationships/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: relationshipUpdateDto
+    })));
+}
+/**
  * Retrieve assets by city
  */
 export function getAssetsByCity(opts?: Oazapfts.RequestOpts) {
@@ -5296,6 +5551,14 @@ export enum Permission {
     PluginRead = "plugin.read",
     PluginUpdate = "plugin.update",
     PluginDelete = "plugin.delete",
+    RelationshipCreate = "relationship.create",
+    RelationshipRead = "relationship.read",
+    RelationshipUpdate = "relationship.update",
+    RelationshipDelete = "relationship.delete",
+    RelationshipTypeCreate = "relationshipType.create",
+    RelationshipTypeRead = "relationshipType.read",
+    RelationshipTypeUpdate = "relationshipType.update",
+    RelationshipTypeDelete = "relationshipType.delete",
     ServerAbout = "server.about",
     ServerApkLinks = "server.apkLinks",
     ServerStorage = "server.storage",
@@ -5504,6 +5767,10 @@ export enum JobName {
     OcrQueueAll = "OcrQueueAll",
     Ocr = "Ocr",
     WorkflowRun = "WorkflowRun"
+}
+export enum RelationshipGender {
+    Male = "male",
+    Female = "female"
 }
 export enum SearchSuggestionType {
     Country = "country",

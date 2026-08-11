@@ -3,7 +3,8 @@
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
   import { AppRoute, QueryParameter } from '$lib/constants';
   import { getPeopleThumbnailUrl } from '$lib/utils';
-  import { type PersonResponseDto } from '@immich/sdk';
+  import { genderRingClass } from '$lib/utils/person-gender';
+  import { type PersonResponseDto, type RelationshipGender } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiAccountMultipleCheckOutline,
@@ -20,13 +21,15 @@
 
   interface Props {
     person: PersonResponseDto;
+    /** What this person's relationships state they are, when anything does. */
+    gender?: RelationshipGender | null;
     onSetBirthDate: () => void;
     onMergePeople: () => void;
     onHidePerson: () => void;
     onToggleFavorite: () => void;
   }
 
-  let { person, onSetBirthDate, onMergePeople, onHidePerson, onToggleFavorite }: Props = $props();
+  let { person, gender, onSetBirthDate, onMergePeople, onHidePerson, onToggleFavorite }: Props = $props();
 
   let showVerticalDots = $state(false);
 </script>
@@ -53,6 +56,7 @@
         widthStyle="100%"
         circle
         preload={false}
+        class={genderRingClass(gender)}
       />
       {#if person.isFavorite}
         <div class="absolute top-4 start-4">

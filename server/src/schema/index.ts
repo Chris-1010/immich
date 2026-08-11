@@ -52,8 +52,11 @@ import { OcrSearchTable } from 'src/schema/tables/ocr-search.table';
 import { PartnerAuditTable } from 'src/schema/tables/partner-audit.table';
 import { PartnerTable } from 'src/schema/tables/partner.table';
 import { PersonAuditTable } from 'src/schema/tables/person-audit.table';
+import { PersonRelationshipOrderTable } from 'src/schema/tables/person-relationship-order.table';
+import { PersonRelationshipTable } from 'src/schema/tables/person-relationship.table';
 import { PersonTable } from 'src/schema/tables/person.table';
 import { PluginActionTable, PluginFilterTable, PluginTable } from 'src/schema/tables/plugin.table';
+import { RelationshipTypeTable } from 'src/schema/tables/relationship-type.table';
 import { SessionTable } from 'src/schema/tables/session.table';
 import { SharedLinkAssetTable } from 'src/schema/tables/shared-link-asset.table';
 import { SharedLinkTable } from 'src/schema/tables/shared-link.table';
@@ -111,6 +114,10 @@ export class ImmichDatabase {
     PartnerTable,
     PersonTable,
     PersonAuditTable,
+    // the relationship type table is listed first so the foreign key from person_relationship resolves
+    RelationshipTypeTable,
+    PersonRelationshipTable,
+    PersonRelationshipOrderTable,
     SessionTable,
     SharedLinkAssetTable,
     SharedLinkTable,
@@ -215,6 +222,10 @@ export interface DB {
 
   person: PersonTable;
   person_audit: PersonAuditTable;
+  person_relationship: PersonRelationshipTable;
+  person_relationship_order: PersonRelationshipOrderTable;
+
+  relationship_type: RelationshipTypeTable;
 
   session: SessionTable;
   session_sync_checkpoint: SessionSyncCheckpointTable;

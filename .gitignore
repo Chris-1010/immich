@@ -33,3 +33,5 @@ vite.config.js.timestamp-*
 /CONTEXT.md
 /docs/adr/
 /docs/plans/
+/.overnight/
+*.tsbuildinfo

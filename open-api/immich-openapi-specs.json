@@ -8373,6 +8373,701 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/relationships": {
+      "post": {
+        "description": "Relate two people under one relationship type. Adding a relationship that is already recorded, in either direction, returns the existing one instead of failing.",
+        "operationId": "createRelationship",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create a relationship",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationship.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/genders": {
+      "get": {
+        "description": "Retrieve the gender each person in the library is stated to be by the relationship labels they hold, for the pages that show faces without showing the relationships behind them. People whose labels state nothing, or state two different things, are left out rather than listed as unknown.",
+        "operationId": "getPersonGenders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonGenderResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List the genders relationships state",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/people/{id}": {
+      "get": {
+        "description": "Retrieve everyone a person is related to, grouped one entry per person, with every label read from that person's end.",
+        "operationId": "getRelatedPeople",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelatedPersonResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List a person's relationships",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/people/{id}/co-appearances": {
+      "get": {
+        "description": "Retrieve the named, non-hidden people of the library ordered by how many photos they share with this person. The person themselves and anyone they are already related to are left out, so every result is a candidate for a new relationship.",
+        "operationId": "getCoAppearances",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoAppearanceResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List candidate counterparts",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/people/{id}/order": {
+      "put": {
+        "description": "Record the order the people on this page should be listed in. The order applies to this page only — it does not change how this person is listed on anyone else's. Anyone omitted goes back to being ordered by relationship type.",
+        "operationId": "setRelatedPeopleOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipOrderUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Reorder a person's relationships",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "person.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/types": {
+      "get": {
+        "description": "Retrieve every relationship type belonging to the authenticated user, each with its inverse. The starter set is created on the first call for a user who has none. Naming both people the type is being chosen for orders the list by how well each type fits the age difference between them, with the fitting ones flagged as `suggested`; this needs a birth date on both people and is ignored otherwise.",
+        "operationId": "getRelationshipTypes",
+        "parameters": [
+          {
+            "name": "counterpartId",
+            "required": false,
+            "in": "query",
+            "description": "The other person: the one the type would describe.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "subjectId",
+            "required": false,
+            "in": "query",
+            "description": "The person whose page the type is being chosen from.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationshipTypeResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List relationship types",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationshipType.read",
+        "x-immich-state": "Alpha"
+      },
+      "post": {
+        "description": "Create a relationship type and its inverse. A blank or identical opposite name creates a single symmetric type that is its own inverse.",
+        "operationId": "createRelationshipType",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipTypeCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipTypeResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create a relationship type",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationshipType.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/types/{id}": {
+      "delete": {
+        "description": "Delete a relationship type, its inverse, and every relationship using either. The counts of what was removed are returned.",
+        "operationId": "deleteRelationshipType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipTypeUsageResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a relationship type",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationshipType.delete",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Rename either half of a relationship type pair. The pairing itself cannot change: a symmetric type stays symmetric and an asymmetric pair stays asymmetric.",
+        "operationId": "updateRelationshipType",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipTypeUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipTypeResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Rename a relationship type",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationshipType.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/types/{id}/usage": {
+      "get": {
+        "description": "Retrieve how many relationships, across how many people, deleting this relationship type and its inverse would remove.",
+        "operationId": "getRelationshipTypeUsage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipTypeUsageResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Retrieve relationship type usage",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationshipType.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/relationships/{id}": {
+      "delete": {
+        "description": "Delete a relationship. It stops being shown on both people's pages.",
+        "operationId": "deleteRelationship",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a relationship",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationship.delete",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Change the relationship type. The new type describes the person opposite `subjectId`, so `subjectId` must be the person whose page the type was chosen from.",
+        "operationId": "updateRelationship",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Relabel a relationship",
+        "tags": [
+          "Relationships"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "relationship.update",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/search/cities": {
       "get": {
         "description": "Retrieve a list of assets with each asset belonging to a different city. This endpoint is used on the places pages to show a single thumbnail for each city the user has assets in.",
@@ -14393,6 +15088,10 @@
       "description": "Queues and background jobs are used for processing tasks asynchronously. Queues can be paused and resumed as needed."
     },
     {
+      "name": "Relationships",
+      "description": "A relationship is a directed link between two people, carrying exactly one relationship type. It is stored once and read from both ends: the subject sees the counterpart labelled with the type, and the counterpart sees the subject labelled with that type's inverse. Every type has an inverse, and a type whose inverse is itself is symmetric."
+    },
+    {
       "name": "Search",
       "description": "Endpoints related to searching assets via text, smart search, optical character recognition (OCR), and other filters like person, album, and other metadata. Search endpoints usually support pagination and sorting."
     },
@@ -16145,6 +16844,39 @@
         },
         "required": [
           "existingIds"
+        ],
+        "type": "object"
+      },
+      "CoAppearanceResponseDto": {
+        "properties": {
+          "gender": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RelationshipGender"
+              }
+            ],
+            "description": "What the labels this person already holds state about them, or null when nothing about them is\nknown yet. A gender is never recorded against a person directly, only implied by their\nrelationships, so labels that disagree state nothing between them.",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sharedAssets": {
+            "type": "integer"
+          },
+          "thumbnailPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "gender",
+          "id",
+          "name",
+          "sharedAssets",
+          "thumbnailPath"
         ],
         "type": "object"
       },
@@ -17959,6 +18691,14 @@
           "plugin.read",
           "plugin.update",
           "plugin.delete",
+          "relationship.create",
+          "relationship.read",
+          "relationship.update",
+          "relationship.delete",
+          "relationshipType.create",
+          "relationshipType.read",
+          "relationshipType.update",
+          "relationshipType.delete",
           "server.about",
           "server.apkLinks",
           "server.storage",
@@ -18051,6 +18791,62 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PersonGenderResponseDto": {
+        "properties": {
+          "gender": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RelationshipGender"
+              }
+            ]
+          },
+          "personId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "gender",
+          "personId"
+        ],
+        "type": "object"
+      },
+      "PersonRelationshipResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "inverseGender": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RelationshipGender"
+              }
+            ],
+            "description": "What this label states about the person whose page it is read from. The type names the other\nperson, so it is the inverse that speaks for this one: a \"Father\" here means a son or a\ndaughter there. Null when the inverse names no gender.",
+            "nullable": true
+          },
+          "inverseId": {
+            "type": "string"
+          },
+          "inverseName": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "inverseGender",
+          "inverseId",
+          "inverseName",
+          "typeId",
+          "typeName"
+        ],
         "type": "object"
       },
       "PersonResponseDto": {
@@ -18937,6 +19733,230 @@
           "like"
         ],
         "type": "string"
+      },
+      "RelatedPersonResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/PersonRelationshipResponseDto"
+            },
+            "type": "array"
+          },
+          "thumbnailPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "relationships",
+          "thumbnailPath"
+        ],
+        "type": "object"
+      },
+      "RelationshipCreateDto": {
+        "properties": {
+          "counterpartId": {
+            "description": "The other person: the one the type describes.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "subjectId": {
+            "description": "The person whose page the relationship is being added from.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "typeId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "subjectId",
+          "typeId"
+        ],
+        "type": "object"
+      },
+      "RelationshipGender": {
+        "enum": [
+          "male",
+          "female"
+        ],
+        "type": "string"
+      },
+      "RelationshipOrderUpdateDto": {
+        "properties": {
+          "relatedPersonIds": {
+            "description": "Everyone on the page, in the order they should appear. Position in the array is the position\non the page. Anyone omitted goes back to being placed by relationship type.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relatedPersonIds"
+        ],
+        "type": "object"
+      },
+      "RelationshipResponseDto": {
+        "properties": {
+          "counterpartId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inverseId": {
+            "type": "string"
+          },
+          "inverseName": {
+            "type": "string"
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "typeId": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartId",
+          "id",
+          "inverseId",
+          "inverseName",
+          "subjectId",
+          "typeId",
+          "typeName"
+        ],
+        "type": "object"
+      },
+      "RelationshipTypeCreateDto": {
+        "properties": {
+          "inverseName": {
+            "description": "A blank opposite makes the type symmetric: its inverse is itself.",
+            "nullable": true,
+            "type": "string"
+          },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "RelationshipTypeResponseDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "inverseId": {
+            "description": "Equal to `id` when the type is symmetric.",
+            "type": "string"
+          },
+          "inverseName": {
+            "type": "string"
+          },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "description": "How much older the counterpart is expected to be, in signed years. Null when age says nothing.",
+            "nullable": true,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "suggested": {
+            "description": "Whether the age difference between the two people the list was requested for fits this type.\nAlways false when no pair was given, or when either of them has no birth date.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "inverseId",
+          "inverseName",
+          "maxAgeGap",
+          "minAgeGap",
+          "name",
+          "suggested"
+        ],
+        "type": "object"
+      },
+      "RelationshipTypeUpdateDto": {
+        "properties": {
+          "inverseName": {
+            "type": "string"
+          },
+          "maxAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "minAgeGap": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RelationshipTypeUsageResponseDto": {
+        "properties": {
+          "personCount": {
+            "type": "integer"
+          },
+          "relationshipCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "personCount",
+          "relationshipCount"
+        ],
+        "type": "object"
+      },
+      "RelationshipUpdateDto": {
+        "properties": {
+          "subjectId": {
+            "description": "The person the relabelled type is read from. A stored relationship is rendered from both\nends, so the new type only means something once the end it was chosen from is known.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "typeId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subjectId",
+          "typeId"
+        ],
+        "type": "object"
       },
       "ReverseGeocodingStateResponseDto": {
         "properties": {

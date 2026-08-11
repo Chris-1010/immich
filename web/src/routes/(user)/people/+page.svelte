@@ -17,7 +17,15 @@
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
   import { clearQueryParam } from '$lib/utils/navigation';
-  import { getAllPeople, getPerson, searchPerson, updatePerson, type PersonResponseDto } from '@immich/sdk';
+  import { loadPersonGenders } from '$lib/utils/person-gender';
+  import {
+    getAllPeople,
+    getPerson,
+    searchPerson,
+    updatePerson,
+    type PersonResponseDto,
+    type RelationshipGender,
+  } from '@immich/sdk';
   import { Button, Icon, modalManager, toastManager } from '@immich/ui';
   import { mdiAccountOff, mdiEyeOutline } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -45,7 +53,18 @@
   let innerHeight = $state(0);
   let searchPeopleElement = $state<ReturnType<typeof SearchPeople>>();
 
+  // Only the people some relationship states a gender for are in here; everyone else goes unringed.
+  let genders = $state<Record<string, RelationshipGender>>({});
+
   onMount(() => {
+    handlePromiseError(
+      loadPersonGenders()
+        .then((loaded) => (genders = loaded))
+        // A ring is decoration on a page that works without it, so a failure to load one is not
+        // worth a toast over the whole library.
+        .catch(() => undefined),
+    );
+
     const getSearchedPeople = $page.url.searchParams.get(QueryParameter.SEARCHED_PEOPLE);
     if (getSearchedPeople) {
       searchName = getSearchedPeople;
@@ -353,6 +372,7 @@
         >
           <PeopleCard
             {person}
+            gender={genders[person.id]}
             onSetBirthDate={() => handleChangeBirthDate(person)}
             onMergePeople={() => handleMergePeople(person)}
             onHidePerson={() => handleHidePerson(person)}
