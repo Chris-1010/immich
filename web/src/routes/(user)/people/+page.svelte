@@ -29,7 +29,7 @@
     type RelationshipGender,
   } from '@immich/sdk';
   import { Button, Icon, modalManager, toastManager } from '@immich/ui';
-  import { mdiAccountOff, mdiEyeOutline, mdiTagPlusOutline } from '@mdi/js';
+  import { mdiAccountOff, mdiClose, mdiEyeOutline, mdiMagnify, mdiTagPlusOutline } from '@mdi/js';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { quintOut } from 'svelte/easing';
@@ -71,6 +71,15 @@
   let searchedPeopleLocal: PersonResponseDto[] = $state([]);
   let innerHeight = $state(0);
   let searchPeopleElement = $state<ReturnType<typeof SearchPeople>>();
+
+  // On narrow screens the search bar is collapsed behind an icon so the header buttons still fit.
+  let mobileSearchOpen = $state(false);
+
+  const closeMobileSearch = () => {
+    mobileSearchOpen = false;
+    searchName = '';
+    onResetSearchBar();
+  };
 
   // Only the people some relationship states a gender for are in here; everyone else goes unringed.
   let genders = $state<Record<string, RelationshipGender>>({});
@@ -404,9 +413,9 @@
 >
   {#snippet buttons()}
     {#if people.length > 0}
-      <div class="flex gap-2 items-center justify-center">
-        <div class="hidden sm:block">
-          <div class="w-40 lg:w-80 h-10">
+      <div class="flex gap-2 items-center justify-center {mobileSearchOpen ? 'grow' : ''}">
+        <div class={mobileSearchOpen ? 'grow sm:grow-0' : 'hidden sm:block'}>
+          <div class="w-full sm:w-40 lg:w-80 h-10">
             <SearchPeople
               bind:this={searchPeopleElement}
               type="searchBar"
@@ -418,15 +427,31 @@
             />
           </div>
         </div>
+        <Button
+          class="sm:hidden shrink-0"
+          leadingIcon={mobileSearchOpen ? mdiClose : mdiMagnify}
+          onclick={() => (mobileSearchOpen ? closeMobileSearch() : (mobileSearchOpen = true))}
+          size="small"
+          variant="ghost"
+          color="secondary"
+          aria-label={mobileSearchOpen ? $t('close') : $t('search_people')}
+        />
+
         <!-- Only while the mode is on, so the button that does the work appears where the button
              that started it was, rather than sitting greyed out until something is picked. -->
         {#if bulkDetails && selected.length > 0}
-          <Button leadingIcon={mdiTagPlusOutline} onclick={handleAddDetails} size="small">
+          <Button
+            class={mobileSearchOpen ? 'hidden sm:flex' : ''}
+            leadingIcon={mdiTagPlusOutline}
+            onclick={handleAddDetails}
+            size="small"
+          >
             {$t('bulk_add_details')}
           </Button>
         {/if}
 
         <Button
+          class={mobileSearchOpen ? 'hidden sm:flex' : ''}
           leadingIcon={mdiTagPlusOutline}
           onclick={handleToggleBulkDetails}
           size="small"
@@ -439,6 +464,7 @@
         </Button>
 
         <Button
+          class={mobileSearchOpen ? 'hidden sm:flex' : ''}
           leadingIcon={mdiEyeOutline}
           onclick={() => (selectHidden = !selectHidden)}
           size="small"
