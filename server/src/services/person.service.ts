@@ -606,6 +606,9 @@ export class PersonService extends BaseService {
         // Relationships move before the delete: the foreign key cascade would otherwise discard
         // everything the merged person was related to.
         await this.relationshipRepository.reassignRelationships(mergeId, id);
+        // Details move before the delete for the same reason relationships do: the foreign key cascade
+        // would otherwise discard everything recorded about the merged person.
+        await this.personDetailRepository.reassign(mergeId, id);
         await this.removeAllPeople([mergePerson]);
 
         this.logger.log(`Merged ${mergeName} into ${primaryName}`);

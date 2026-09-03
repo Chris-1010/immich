@@ -52,6 +52,7 @@ import { OcrSearchTable } from 'src/schema/tables/ocr-search.table';
 import { PartnerAuditTable } from 'src/schema/tables/partner-audit.table';
 import { PartnerTable } from 'src/schema/tables/partner.table';
 import { PersonAuditTable } from 'src/schema/tables/person-audit.table';
+import { PersonDetailTable } from 'src/schema/tables/person-detail.table';
 import { PersonRelationshipOrderTable } from 'src/schema/tables/person-relationship-order.table';
 import { PersonRelationshipTable } from 'src/schema/tables/person-relationship.table';
 import { PersonTable } from 'src/schema/tables/person.table';
@@ -118,6 +119,7 @@ export class ImmichDatabase {
     RelationshipTypeTable,
     PersonRelationshipTable,
     PersonRelationshipOrderTable,
+    PersonDetailTable,
     SessionTable,
     SharedLinkAssetTable,
     SharedLinkTable,
@@ -222,6 +224,7 @@ export interface DB {
 
   person: PersonTable;
   person_audit: PersonAuditTable;
+  person_detail: PersonDetailTable;
   person_relationship: PersonRelationshipTable;
   person_relationship_order: PersonRelationshipOrderTable;
 

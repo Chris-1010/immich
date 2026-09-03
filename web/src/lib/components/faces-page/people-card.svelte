@@ -9,6 +9,7 @@
   import {
     mdiAccountMultipleCheckOutline,
     mdiCalendarEditOutline,
+    mdiCheck,
     mdiDotsVertical,
     mdiEyeOffOutline,
     mdiHeart,
@@ -23,13 +24,29 @@
     person: PersonResponseDto;
     /** What this person's relationships state they are, when anything does. */
     gender?: RelationshipGender | null;
+    /**
+     * The card is being picked from a list rather than opened. It gives up its link and its menu
+     * for as long as that lasts: a page where a click means two different things depending on where
+     * it lands is a page that cannot be selected from quickly, which is the whole point of the mode.
+     */
+    selecting?: boolean;
+    selected?: boolean;
     onSetBirthDate: () => void;
     onMergePeople: () => void;
     onHidePerson: () => void;
     onToggleFavorite: () => void;
   }
 
-  let { person, gender, onSetBirthDate, onMergePeople, onHidePerson, onToggleFavorite }: Props = $props();
+  let {
+    person,
+    gender,
+    selecting = false,
+    selected = false,
+    onSetBirthDate,
+    onMergePeople,
+    onHidePerson,
+    onToggleFavorite,
+  }: Props = $props();
 
   let showVerticalDots = $state(false);
 </script>
@@ -42,11 +59,7 @@
   role="group"
   use:focusOutside={{ onFocusOut: () => (showVerticalDots = false) }}
 >
-  <a
-    href="{AppRoute.PEOPLE}/{person.id}?{QueryParameter.PREVIOUS_ROUTE}={AppRoute.PEOPLE}"
-    draggable="false"
-    onfocus={() => (showVerticalDots = true)}
-  >
+  {#snippet thumbnail()}
     <div class="w-full h-full rounded-xl brightness-95 filter">
       <ImageThumbnail
         shadow
@@ -56,17 +69,34 @@
         widthStyle="100%"
         circle
         preload={false}
-        class={genderRingClass(gender)}
+        class={selected ? 'ring-4 ring-primary' : genderRingClass(gender)}
       />
       {#if person.isFavorite}
         <div class="absolute top-4 start-4">
           <Icon icon={mdiHeart} size="24" class="text-white" />
         </div>
       {/if}
+      {#if selecting && selected}
+        <div class="absolute top-2 end-2 rounded-full bg-primary p-1 text-white" title={$t('selected')}>
+          <Icon icon={mdiCheck} size="1em" aria-hidden />
+        </div>
+      {/if}
     </div>
-  </a>
+  {/snippet}
 
-  {#if showVerticalDots}
+  {#if selecting}
+    {@render thumbnail()}
+  {:else}
+    <a
+      href="{AppRoute.PEOPLE}/{person.id}?{QueryParameter.PREVIOUS_ROUTE}={AppRoute.PEOPLE}"
+      draggable="false"
+      onfocus={() => (showVerticalDots = true)}
+    >
+      {@render thumbnail()}
+    </a>
+  {/if}
+
+  {#if showVerticalDots && !selecting}
     <div class="absolute top-2 end-2 z-1">
       <ButtonContextMenu
         buttonClass="icon-white-drop-shadow"

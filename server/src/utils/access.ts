@@ -271,6 +271,13 @@ const checkOtherAccess = async (access: AccessRepository, request: OtherAccessRe
       return await access.person.checkOwnerAccess(auth.user.id, ids);
     }
 
+    // Details hang off a person and have no owner of their own, so the ids checked here are person
+    // ids and the answer is simply whether the caller owns the person.
+    case Permission.PersonDetailRead:
+    case Permission.PersonDetailUpdate: {
+      return await access.person.checkOwnerAccess(auth.user.id, ids);
+    }
+
     case Permission.PersonReassign: {
       return access.person.checkFaceOwnerAccess(auth.user.id, ids);
     }

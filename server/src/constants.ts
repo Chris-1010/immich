@@ -161,6 +161,8 @@ export const endpointTags: Record<ApiTag, string> = {
   [ApiTag.Partners]: 'A partner is a link with another user that allows sharing of assets between two users.',
   [ApiTag.People]:
     'A person is a collection of faces, which can be favorited and named. A person can also be merged into another person. People are automatically created via the face recognition job.',
+  [ApiTag.PersonDetails]:
+    'A detail is one free-text fact recorded against a person, as a key and a value such as "Hometown" and "Cork". Keys are not drawn from a fixed vocabulary: they are suggested from the keys already in use across the library, and a key typed in different casing is stored with the casing the library already uses. Details are also what links people to each other by shared facts, since everyone recording the same key and value is grouped together.',
   [ApiTag.Plugins]:
     'A plugin is an installed module that makes filters and actions available for the workflow feature.',
   [ApiTag.Queues]:

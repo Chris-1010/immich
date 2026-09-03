@@ -1056,6 +1056,7 @@ describe(PersonService.name, () => {
       mocks.access.person.checkOwnerAccess.mockResolvedValueOnce(new Set(['person-1']));
       mocks.access.person.checkOwnerAccess.mockResolvedValueOnce(new Set(['person-2']));
       mocks.relationship.reassignRelationships.mockResolvedValue(void 0);
+      mocks.personDetail.reassign.mockResolvedValue(void 0);
 
       await expect(sut.mergePerson(authStub.admin, 'person-1', { ids: ['person-2'] })).resolves.toEqual([
         { id: 'person-2', success: true },
@@ -1087,6 +1088,7 @@ describe(PersonService.name, () => {
       mocks.access.person.checkOwnerAccess.mockResolvedValueOnce(new Set(['person-3']));
       mocks.access.person.checkOwnerAccess.mockResolvedValueOnce(new Set(['person-1']));
       mocks.relationship.reassignRelationships.mockResolvedValue(void 0);
+      mocks.personDetail.reassign.mockResolvedValue(void 0);
 
       await expect(sut.mergePerson(authStub.admin, 'person-3', { ids: ['person-1'] })).resolves.toEqual([
         { id: 'person-1', success: true },

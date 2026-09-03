@@ -202,6 +202,11 @@ export enum Permission {
   RelationshipTypeUpdate = 'relationshipType.update',
   RelationshipTypeDelete = 'relationshipType.delete',
 
+  // Details are written as a whole list rather than one row at a time, so creating and deleting a
+  // row are both part of updating the list and need no permission of their own.
+  PersonDetailRead = 'personDetail.read',
+  PersonDetailUpdate = 'personDetail.update',
+
   ServerAbout = 'server.about',
   ServerApkLinks = 'server.apkLinks',
   ServerStorage = 'server.storage',
@@ -860,6 +865,7 @@ export enum ApiTag {
   NotificationsAdmin = 'Notifications (admin)',
   Partners = 'Partners',
   People = 'People',
+  PersonDetails = 'PersonDetails',
   Plugins = 'Plugins',
   Queues = 'Queues',
   Relationships = 'Relationships',

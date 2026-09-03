@@ -35,6 +35,7 @@ import { NotificationRepository } from 'src/repositories/notification.repository
 import { OAuthRepository } from 'src/repositories/oauth.repository';
 import { OcrRepository } from 'src/repositories/ocr.repository';
 import { PartnerRepository } from 'src/repositories/partner.repository';
+import { PersonDetailRepository } from 'src/repositories/person-detail.repository';
 import { PersonRepository } from 'src/repositories/person.repository';
 import { PluginRepository } from 'src/repositories/plugin.repository';
 import { ProcessRepository } from 'src/repositories/process.repository';
@@ -152,6 +153,7 @@ export class BaseService {
     protected ocrRepository: OcrRepository,
     protected partnerRepository: PartnerRepository,
     protected personRepository: PersonRepository,
+    protected personDetailRepository: PersonDetailRepository,
     protected pluginRepository: PluginRepository,
     protected processRepository: ProcessRepository,
     protected relationshipRepository: RelationshipRepository,
