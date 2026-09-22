@@ -729,6 +729,7 @@
   "cannot_update_the_description": "Cannot update the description",
   "cast": "Cast",
   "cast_description": "Configure available cast destinations",
+  "cast_load_error": "The cast device could not play this media ({}). Check that it can reach the server URL and that the media format is supported.",
   "change_date": "Change date",
   "change_description": "Change description",
   "change_display_order": "Change display order",

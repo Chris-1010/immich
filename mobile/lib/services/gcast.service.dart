@@ -41,6 +41,8 @@ class GCastService {
 
   void Function(CastState)? onCastState;
 
+  void Function(String)? onReceiverError;
+
   GCastService(this._gCastRepository, this._sessionsApiService, this._assetApiRepository) {
     _gCastRepository.onCastStatus = _onCastStatusCallback;
     _gCastRepository.onCastMessage = _onCastMessageCallback;
@@ -63,7 +65,25 @@ class GCastService {
       case "MEDIA_STATUS":
         _handleMediaStatus(message);
         break;
+      case "LOAD_FAILED":
+      case "LOAD_CANCELLED":
+      case "ERROR":
+      case "INVALID_REQUEST":
+        _handleLoadError(message);
+        break;
     }
+  }
+
+  void _handleLoadError(Map<String, dynamic> message) {
+    // The receiver rejected the media it was told to load. This usually means
+    // the receiver could not fetch the media URL (unreachable host, untrusted
+    // TLS certificate) or the codec/container is unsupported. Surface it so the
+    // failure is visible instead of the app appearing to cast into the void.
+    _mediaStatusPollingTimer?.cancel();
+    currentAssetId = null;
+
+    final reason = message['reason'] ?? message['detailedErrorCode'] ?? message['type'];
+    onReceiverError?.call(reason.toString());
   }
 
   void _handleMediaStatus(Map<String, dynamic> message) {

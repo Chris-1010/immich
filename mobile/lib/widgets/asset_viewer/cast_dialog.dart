@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/models/cast/cast_manager_state.dart';
 import 'package:immich_mobile/providers/cast.provider.dart';
+import 'package:immich_mobile/widgets/common/immich_toast.dart';
 
 class CastDialog extends ConsumerWidget {
   const CastDialog({super.key});
@@ -13,6 +14,17 @@ class CastDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final castManager = ref.watch(castProvider);
+
+    ref.listen(castErrorProvider, (previous, next) {
+      final error = next.valueOrNull;
+      if (error != null) {
+        ImmichToast.show(
+          context: context,
+          msg: "cast_load_error".tr(args: [error]),
+          toastType: ToastType.error,
+        );
+      }
+    });
 
     bool isCurrentDevice(String deviceName) {
       return castManager.receiverName == deviceName && castManager.isCasting;

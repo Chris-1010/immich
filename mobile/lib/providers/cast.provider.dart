@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/entities/asset.entity.dart' as old_asset_entity;
@@ -8,11 +10,21 @@ final castProvider = StateNotifierProvider<CastNotifier, CastManagerState>(
   (ref) => CastNotifier(ref.watch(gCastServiceProvider)),
 );
 
+// Emits receiver errors (e.g. a rejected media load) for the UI to surface.
+final castErrorProvider = StreamProvider.autoDispose<String>((ref) {
+  return ref.watch(castProvider.notifier).errorStream;
+});
+
 class CastNotifier extends StateNotifier<CastManagerState> {
   // more cast providers can be added here (ie Fcast)
   final GCastService _gCastService;
 
   List<(String, CastDestinationType, dynamic)> discovered = List.empty();
+
+  // One-shot channel for receiver errors (e.g. the receiver rejected the media
+  // it was told to load). The UI listens to this to show a message.
+  final StreamController<String> _errorController = StreamController<String>.broadcast();
+  Stream<String> get errorStream => _errorController.stream;
 
   CastNotifier(this._gCastService)
     : super(
@@ -29,6 +41,19 @@ class CastNotifier extends StateNotifier<CastManagerState> {
     _gCastService.onDuration = _onDuration;
     _gCastService.onReceiverName = _onReceiverName;
     _gCastService.onCastState = _onCastState;
+    _gCastService.onReceiverError = _onReceiverError;
+  }
+
+  void _onReceiverError(String error) {
+    if (!_errorController.isClosed) {
+      _errorController.add(error);
+    }
+  }
+
+  @override
+  void dispose() {
+    _errorController.close();
+    super.dispose();
   }
 
   void _onConnectionState(bool isCasting) {
