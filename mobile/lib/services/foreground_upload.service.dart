@@ -155,7 +155,7 @@ class ForegroundUploadService {
     List<File> files, {
     Completer<void>? cancelToken,
     void Function(String fileId, int bytes, int totalBytes)? onProgress,
-    void Function(String fileId)? onSuccess,
+    void Function(String fileId, String remoteAssetId)? onSuccess,
     void Function(String fileId, String errorMessage)? onError,
   }) async {
     if (files.isEmpty) {
@@ -174,8 +174,8 @@ class ForegroundUploadService {
           onProgress: (bytes, totalBytes) => onProgress?.call(fileId, bytes, totalBytes),
         );
 
-        if (result.isSuccess) {
-          onSuccess?.call(fileId);
+        if (result.isSuccess && result.remoteAssetId != null) {
+          onSuccess?.call(fileId, result.remoteAssetId!);
         } else if (!result.isCancelled && result.errorMessage != null) {
           onError?.call(fileId, result.errorMessage!);
         }
@@ -439,7 +439,9 @@ class ForegroundUploadService {
         'duration': '0',
       };
 
-      return await _uploadRepository.uploadFile(
+      // A duplicate (same checksum already on the server) also comes back as a
+      // success with the existing asset's id, so a retry never creates a copy.
+      return await _uploadRepository.uploadFileWithRetry(
         file: file,
         originalFileName: filename,
         fields: fields,
