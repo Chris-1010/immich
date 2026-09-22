@@ -109,6 +109,10 @@ class AssetApiRepository extends ApiRepository {
     AssetVisibilityEnum.archive => AssetVisibility.archive,
   };
 
+  Future<AssetResponseDto> getAssetInfo(String assetId) {
+    return checkNull(_api.getAssetInfo(assetId));
+  }
+
   Future<String?> getAssetMIMEType(String assetId) async {
     final response = await checkNull(_api.getAssetInfo(assetId));
 
