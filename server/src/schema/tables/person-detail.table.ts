@@ -1,4 +1,5 @@
 import { UpdatedAtTrigger, UpdateIdColumn } from 'src/decorators';
+import { PersonDetailDatePrecision } from 'src/enum';
 import { PersonTable } from 'src/schema/tables/person.table';
 import { UserTable } from 'src/schema/tables/user.table';
 import {
@@ -66,6 +67,28 @@ export class PersonDetailTable {
   /** Position in the list on the person's page. Assigned from the array order on every save. */
   @Column({ type: 'integer', default: 0 })
   sortOrder!: Generated<number>;
+
+  /**
+   * When the fact became true, if known. Stored snapped to the first day of its year or month, with
+   * `sincePrecision` saying which, so a year-only date is never mistaken for one on 1 January.
+   *
+   * Only top-level details carry dates: a subdetail lives and dies with its parent row.
+   */
+  @Column({ type: 'date', nullable: true })
+  since!: Timestamp | null;
+
+  @Column({ nullable: true })
+  sincePrecision!: PersonDetailDatePrecision | null;
+
+  /**
+   * When the fact stopped being true. Null is what makes a detail Current; any date makes it Past.
+   * There is no separate status column, so the two can never disagree.
+   */
+  @Column({ type: 'date', nullable: true })
+  until!: Timestamp | null;
+
+  @Column({ nullable: true })
+  untilPrecision!: PersonDetailDatePrecision | null;
 
   @CreateDateColumn()
   createdAt!: Generated<Timestamp>;

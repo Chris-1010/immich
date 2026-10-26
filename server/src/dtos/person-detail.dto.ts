@@ -11,8 +11,10 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { AlongWith, PersonDetail } from 'src/repositories/person-detail.repository';
-import { Optional, ValidateUUID } from 'src/validation';
+import { PersonDetailDatePrecision } from 'src/enum';
+import { AlongWith, AlongWithGroup, PersonDetail } from 'src/repositories/person-detail.repository';
+import { asDateString } from 'src/utils/date';
+import { IsDateStringFormat, Optional, ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
 /** Long enough for an address or a sentence, short enough that a bulk save cannot carry an essay. */
 const MAX_DETAIL_LENGTH = 1000;
@@ -45,7 +47,8 @@ export class PersonSubdetailUpsertDto {
   value!: string;
 }
 
-export class PersonDetailUpsertDto extends PersonSubdetailUpsertDto {
+/** A top-level detail without its dates, which is all a bulk insert writes. */
+export class PersonDetailWithSubdetailsDto extends PersonSubdetailUpsertDto {
   /**
    * What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
    * one level deep, which is why these carry no subdetails of their own.
@@ -55,6 +58,35 @@ export class PersonDetailUpsertDto extends PersonSubdetailUpsertDto {
   @ArrayMaxSize(MAX_SUBDETAILS_PER_DETAIL)
   @Optional()
   subdetails?: PersonSubdetailUpsertDto[];
+}
+
+export class PersonDetailUpsertDto extends PersonDetailWithSubdetailsDto {
+  /**
+   * When the fact became true, as a full date. Snapped on write to the first day of the year or
+   * month named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored.
+   */
+  @ApiProperty({ format: 'date' })
+  @IsDateStringFormat('yyyy-MM-dd')
+  @Optional({ nullable: true, emptyToNull: true })
+  since?: string | null;
+
+  /** Defaults to month when `since` is given without one. */
+  @ValidateEnum({ enum: PersonDetailDatePrecision, name: 'PersonDetailDatePrecision', optional: true, nullable: true })
+  sincePrecision?: PersonDetailDatePrecision | null;
+
+  /**
+   * When the fact stopped being true. Set means Past, absent or null means Current — this is how a
+   * whole-list save archives a row: the old row is sent back with `until` set, alongside a new row
+   * without an id for the value that replaced it.
+   */
+  @ApiProperty({ format: 'date' })
+  @IsDateStringFormat('yyyy-MM-dd')
+  @Optional({ nullable: true, emptyToNull: true })
+  until?: string | null;
+
+  /** Defaults to month when `until` is given without one. */
+  @ValidateEnum({ enum: PersonDetailDatePrecision, name: 'PersonDetailDatePrecision', optional: true, nullable: true })
+  untilPrecision?: PersonDetailDatePrecision | null;
 }
 
 export class PersonDetailsUpdateDto {
@@ -68,13 +100,21 @@ export class PersonDetailsUpdateDto {
   details!: PersonDetailUpsertDto[];
 }
 
-export class PersonDetailBulkItemDto extends PersonDetailUpsertDto {
+export class PersonDetailBulkItemDto extends PersonDetailWithSubdetailsDto {
   /**
    * Who among the people named by the request should have their existing value under this key
-   * overwritten rather than gaining a second row. Everyone else keeps what they had.
+   * replaced rather than gaining a second row. Everyone else keeps what they had.
    */
   @ValidateUUID({ each: true, optional: true })
   replaceForPersonIds?: string[];
+
+  /**
+   * How a replacement treats the value it replaces. True (the default) moves it to Past — `until`
+   * set to this month, subdetails kept with it — and adds the new value as a fresh Current row.
+   * False overwrites it in place, which loses the old value.
+   */
+  @ValidateBoolean({ optional: true, default: true })
+  archiveReplaced?: boolean;
 }
 
 export class PersonDetailsBulkAddDto {
@@ -165,8 +205,8 @@ export class AlongWithPersonResponseDto {
   sharedSubdetails!: PersonDetailPairResponseDto[];
 }
 
-/** Everyone else recording the same key and value. */
-export class AlongWithResponseDto {
+/** One half of an along-with group: those who hold the pair Currently, or those who held it before. */
+export class AlongWithGroupResponseDto {
   /**
    * The size of the whole group, which is larger than `people` once the cap is reached. The count
    * behind a `+N` is this, not the length of the list.
@@ -175,6 +215,16 @@ export class AlongWithResponseDto {
   total!: number;
 
   people!: AlongWithPersonResponseDto[];
+}
+
+/**
+ * Everyone else recording the same key and value, split by whether their own row is Current or
+ * Past. Matching ignores Current/Past on both sides; only the split reads it, and from the other
+ * person's row, not the subject's. Someone holding the pair both ways counts as Current.
+ */
+export class AlongWithResponseDto {
+  current!: AlongWithGroupResponseDto;
+  past!: AlongWithGroupResponseDto;
 }
 
 /** One level down from a detail, and never shown on the person's page. */
@@ -197,6 +247,20 @@ export class PersonDetailResponseDto {
 
   /** When the detail was first recorded. The box shows it on hover, as an age beside the date. */
   createdAt!: Date;
+
+  /** When the fact became true, snapped to the start of its year or month. Null when unknown. */
+  @ApiProperty({ format: 'date' })
+  since!: string | null;
+
+  @ValidateEnum({ enum: PersonDetailDatePrecision, name: 'PersonDetailDatePrecision', nullable: true })
+  sincePrecision!: PersonDetailDatePrecision | null;
+
+  /** When the fact stopped being true. Null means Current, set means Past. */
+  @ApiProperty({ format: 'date' })
+  until!: string | null;
+
+  @ValidateEnum({ enum: PersonDetailDatePrecision, name: 'PersonDetailDatePrecision', nullable: true })
+  untilPrecision!: PersonDetailDatePrecision | null;
 
   subdetails!: PersonSubdetailResponseDto[];
 
@@ -247,27 +311,33 @@ export function mapPersonDetail(
   const group = alongWith.get(matchKey(detail.key, detail.value));
   const own = detail.key.trim().toLowerCase();
 
+  const asGroup = (half?: AlongWithGroup): AlongWithGroupResponseDto => ({
+    total: half?.total ?? 0,
+    people: (half?.people ?? []).map(({ id, name, matchedKeys, matchedSubKeys, matchedSubValues }) => ({
+      id,
+      name,
+      // The group's own key is what everyone here has in common, so it says nothing about any one
+      // of them. Deduplicated because a key can be shared through more than one value.
+      sharedKeys: [...new Set(matchedKeys)].filter((key) => key !== own).map((key) => names.keys.get(key) ?? key),
+      // Two arrays read side by side, which is how the query has to return a list of pairs.
+      sharedSubdetails: matchedSubKeys.map(
+        (key, index) =>
+          names.subdetails.get(`${key} ${matchedSubValues[index]}`) ?? { key, value: matchedSubValues[index] },
+      ),
+    })),
+  });
+
   return {
     id: detail.id,
     key: detail.key,
     value: detail.value,
     sortOrder: detail.sortOrder,
     createdAt: detail.createdAt,
+    since: asDateString(detail.since),
+    sincePrecision: detail.sincePrecision,
+    until: asDateString(detail.until),
+    untilPrecision: detail.untilPrecision,
     subdetails: detail.subdetails.map(({ id, key, value, sortOrder }) => ({ id, key, value, sortOrder })),
-    alongWith: {
-      total: group?.total ?? 0,
-      people: (group?.people ?? []).map(({ id, name, matchedKeys, matchedSubKeys, matchedSubValues }) => ({
-        id,
-        name,
-        // The group's own key is what everyone here has in common, so it says nothing about any one
-        // of them. Deduplicated because a key can be shared through more than one value.
-        sharedKeys: [...new Set(matchedKeys)].filter((key) => key !== own).map((key) => names.keys.get(key) ?? key),
-        // Two arrays read side by side, which is how the query has to return a list of pairs.
-        sharedSubdetails: matchedSubKeys.map(
-          (key, index) =>
-            names.subdetails.get(`${key} ${matchedSubValues[index]}`) ?? { key, value: matchedSubValues[index] },
-        ),
-      })),
-    },
+    alongWith: { current: asGroup(group?.current), past: asGroup(group?.past) },
   };
 }

@@ -896,3 +896,12 @@ export enum PluginTriggerType {
   AssetCreate = 'AssetCreate',
   PersonRecognized = 'PersonRecognized',
 }
+
+/**
+ * How much of a detail's Since or Until date is meaningful. The stored date is always a full date,
+ * snapped to the first day of the year or month, so this is what stops it being read as "1 Jan".
+ */
+export enum PersonDetailDatePrecision {
+  Year = 'year',
+  Month = 'month',
+}
