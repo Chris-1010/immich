@@ -746,6 +746,7 @@
                     label={$t('detail_until_label')}
                     bind:date={row.until}
                     bind:precision={row.untilPrecision}
+                    clearable={false}
                     invalid={isBackwards(row)}
                   />
                 {/if}

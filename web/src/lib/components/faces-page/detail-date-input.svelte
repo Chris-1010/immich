@@ -11,9 +11,14 @@
     date: string | null | undefined;
     precision: PersonDetailDatePrecision | null | undefined;
     invalid?: boolean;
+    /**
+     * Whether a blank year clears the date. Off for Until, where clearing it would make the row
+     * Current and pull it out from under the caret mid-edit; Restore is the way back from Past.
+     */
+    clearable?: boolean;
   }
 
-  let { label, date = $bindable(), precision = $bindable(), invalid = false }: Props = $props();
+  let { label, date = $bindable(), precision = $bindable(), invalid = false, clearable = true }: Props = $props();
 
   /**
    * Typed text rather than what is bound, so a year half way through being typed ("20") is left on
@@ -28,14 +33,15 @@
   const months = $derived(Info.months('short', { locale: $locale }));
 
   /**
-   * Writes back whatever the inputs now say. A blank year clears the date outright, which is how a
-   * date is removed; a month without a year is not a date at all and is held back until one is
-   * typed. A month left blank makes it a year-precision date, never a fake January.
+   * Writes back whatever the inputs now say. A blank year clears the date outright where that is
+   * allowed, which is how a date is removed. Anything short of four digits is held back, so the
+   * last whole date stands until another is typed. A month left blank makes it a year-precision
+   * date, never a fake January.
    */
   const commit = () => {
     const typed = year.trim();
 
-    if (!typed) {
+    if (!typed && clearable) {
       date = null;
       precision = null;
       return;
