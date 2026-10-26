@@ -268,4 +268,49 @@ describe('ContactFieldModal', () => {
     await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
     expect(saved()).toEqual([expect.objectContaining({ value: 'Rathmines', latitude: 1, longitude: 2 })]);
   });
+
+  it('names a pin into a blank value only, never over typed text', async () => {
+    const onSetPin = vi.fn().mockResolvedValue({ latitude: 1, longitude: 2, name: 'Dublin, Ireland' });
+    render(ContactFieldModal, { personId: 'p', kind: PersonDetailKind.Home, details: [], onSetPin, onClose: vi.fn() });
+
+    await userEvent.type(screen.getByLabelText('contact_field_home'), 'Granny flat');
+    await userEvent.click(screen.getByText('contact_field_set_pin'));
+
+    expect(screen.getByLabelText('contact_field_home')).toHaveValue('Granny flat');
+    await userEvent.click(screen.getByText('save'));
+
+    await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+    expect(saved()).toEqual([expect.objectContaining({ value: 'Granny flat', latitude: 1, longitude: 2 })]);
+  });
+
+  it('offers no pin on Email or Phone', () => {
+    render(ContactFieldModal, {
+      personId: 'p',
+      kind: PersonDetailKind.Email,
+      details: [],
+      onSetPin: vi.fn(),
+      onClose: vi.fn(),
+    });
+    expect(screen.queryByText('contact_field_set_pin')).not.toBeInTheDocument();
+  });
+
+  it('moves or removes an existing pin, keeping the value', async () => {
+    render(ContactFieldModal, {
+      personId: 'p',
+      kind: PersonDetailKind.Work,
+      details: [...others],
+      onSetPin: vi.fn(),
+      onClose: vi.fn(),
+    });
+    expect(screen.getByText('contact_field_move_pin')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('contact_field_remove_pin'));
+    expect(screen.getByText('contact_field_set_pin')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('save'));
+
+    await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+    expect(saved()).toContainEqual(
+      expect.objectContaining({ id: 'work', value: 'Intel', latitude: null, longitude: null }),
+    );
+  });
 });

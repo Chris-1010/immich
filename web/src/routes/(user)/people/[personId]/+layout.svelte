@@ -5,6 +5,7 @@
   import { listNavigation } from '$lib/actions/list-navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
+  import ChangeLocation from '$lib/components/shared-components/change-location.svelte';
   import EditNameInput from '$lib/components/faces-page/edit-name-input.svelte';
   import { setPersonPageContext } from '$lib/components/faces-page/person-page-context';
   import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
@@ -16,7 +17,12 @@
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
   import { websocketEvents } from '$lib/stores/websocket';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
-  import { asEndedPayload } from '$lib/utils/contact-fields';
+  import {
+    asEndedPayload,
+    resolvePinName,
+    type ContactFieldPin,
+    type ContactFieldRow,
+  } from '$lib/utils/contact-fields';
   import { handleError } from '$lib/utils/handle-error';
   import { isExternalUrl } from '$lib/utils/navigation';
   import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
@@ -131,9 +137,33 @@
     }
   };
 
+  /**
+   * "Set pin" on a Home or Work row: the asset location picker in its point mode, opened on the
+   * row's pin when it has one. Only coordinates come back from it, so a blank row is named here, and
+   * the editor fills the value from that name only while the value is still blank.
+   */
+  const handleSetPin = async (row: ContactFieldRow): Promise<ContactFieldPin | undefined> => {
+    const point =
+      row.latitude !== null && row.longitude !== null ? { lat: row.latitude, lng: row.longitude } : undefined;
+    const result = await modalManager.show(ChangeLocation, { pointOnly: true, point });
+    if (result?.type !== 'coordinates') {
+      return;
+    }
+
+    const { lat: latitude, lng: longitude } = result.point;
+    // Typed text wins anyway, so a lookup it would only be thrown away for is skipped.
+    const name = row.value.trim() ? undefined : await resolvePinName(latitude, longitude, result.name);
+    return { latitude, longitude, name };
+  };
+
   /** A chip's way into its editor. Each kind is edited on its own, apart from the free-text list. */
   const handleEditContactField = async (kind: PersonDetailKind) => {
-    const saved = await modalManager.show(ContactFieldModal, { personId: person.id, kind, details });
+    const saved = await modalManager.show(ContactFieldModal, {
+      personId: person.id,
+      kind,
+      details,
+      onSetPin: handleSetPin,
+    });
     if (saved) {
       details = saved;
     }

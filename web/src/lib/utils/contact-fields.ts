@@ -1,6 +1,7 @@
 import {
   PersonDetailDatePrecision,
   PersonDetailKind,
+  reverseGeocode,
   type PersonDetailResponseDto,
   type PersonDetailUpsertDto,
 } from '@immich/sdk';
@@ -109,6 +110,27 @@ export type ContactFieldRow = {
 
 /** Where a pin was put, and the name of whatever was picked to put it there, when there was one. */
 export type ContactFieldPin = { latitude: number; longitude: number; name?: string };
+
+/**
+ * What a new pin is called, for filling a blank value. The saved location or search result the
+ * user picked says it best; failing that, the server's offline GeoNames lookup gives `City,
+ * Country` (city-level at best, and nothing at sea). Reverse geocoding stays on the server so a
+ * home's coordinates never reach an outside service. A failed lookup leaves the pin unnamed rather
+ * than failing the pin.
+ */
+export const resolvePinName = async (latitude: number, longitude: number, pickedName?: string) => {
+  if (pickedName?.trim()) {
+    return pickedName.trim();
+  }
+
+  try {
+    const [place] = await reverseGeocode({ lat: latitude, lon: longitude });
+    const name = [place?.city, place?.country].filter(Boolean).join(', ');
+    return name || undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /**
  * A saved Current row whose value now says something else. Only then is keeping the old one

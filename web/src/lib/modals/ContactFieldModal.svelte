@@ -157,6 +157,11 @@
     }
   };
 
+  const handleRemovePin = (row: ContactFieldRow) => {
+    row.latitude = null;
+    row.longitude = null;
+  };
+
   /** Caught here rather than by the server, so the row it is wrong on can be pointed at. */
   const isBackwards = (row: ContactFieldRow) => !!row.since && !!row.until && row.until < row.since;
   const hasBackwards = $derived(rows.some((row) => isBackwards(row)));
@@ -238,16 +243,33 @@
                 </button>
               {/if}
 
-              <!-- B3's "Set pin" lands here, through `onSetPin`, for the kinds a pin means anything on. -->
+              <!-- Only for the kinds a pin means anything on; the server refuses coordinates elsewhere. -->
               {#if onSetPin && canPin(kind) && !ended}
-                <button
-                  type="button"
-                  class="flex place-items-center gap-1 rounded-full px-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
-                  onclick={() => handleSetPin(row)}
-                >
-                  <Icon icon={mdiMapMarker} size="1em" aria-hidden />
-                  {$t('contact_field_set_pin')}
-                </button>
+                {@const pinned = row.latitude !== null && row.longitude !== null}
+                <span class="flex place-items-center">
+                  <button
+                    type="button"
+                    class="flex place-items-center gap-1 rounded-full px-1 text-xs hover:text-primary {pinned
+                      ? 'text-primary'
+                      : 'text-gray-500 dark:text-gray-400'}"
+                    onclick={() => handleSetPin(row)}
+                  >
+                    <Icon icon={mdiMapMarker} size="1em" aria-hidden />
+                    {$t(pinned ? 'contact_field_move_pin' : 'contact_field_set_pin')}
+                  </button>
+                  {#if pinned}
+                    <!-- Clears the coordinates only; the value was the user's to type and stays. -->
+                    <button
+                      type="button"
+                      class="rounded-full text-gray-500 dark:text-gray-400 hover:text-danger"
+                      aria-label={$t('contact_field_remove_pin')}
+                      title={$t('contact_field_remove_pin')}
+                      onclick={() => handleRemovePin(row)}
+                    >
+                      <Icon icon={mdiClose} size="1em" aria-hidden />
+                    </button>
+                  {/if}
+                </span>
               {/if}
 
               {#if changesValue(row)}
