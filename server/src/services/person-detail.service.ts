@@ -12,7 +12,7 @@ import {
   PersonDetailsUpdateDto,
   PersonDetailValueSuggestionSearchDto,
 } from 'src/dtos/person-detail.dto';
-import { Permission } from 'src/enum';
+import { Permission, PersonDetailDatePrecision } from 'src/enum';
 import { AlongWith, PersonDetail } from 'src/repositories/person-detail.repository';
 import { BaseService } from 'src/services/base.service';
 
@@ -42,6 +42,25 @@ const asNames = (details: PersonDetail[]): PersonDetailNames => ({
   ),
 });
 
+/**
+ * A Since or Until date snapped to the start of the period its precision names, so "2019" is stored
+ * as 2019-01-01 and "Mar 2019" as 2019-03-01 whatever day the client happened to send. A date with
+ * no precision is taken as a month, the finer of the two; a precision with no date means nothing
+ * and is dropped.
+ */
+const asPeriod = (date?: string | null, precision?: PersonDetailDatePrecision | null) => {
+  if (!date) {
+    return { date: null, precision: null };
+  }
+
+  const [year, month] = date.split('-');
+  const resolved = precision ?? PersonDetailDatePrecision.Month;
+  return {
+    date: resolved === PersonDetailDatePrecision.Year ? `${year}-01-01` : `${year}-${month}-01`,
+    precision: resolved,
+  };
+};
+
 @Injectable()
 export class PersonDetailService extends BaseService {
   async getDetails(auth: AuthDto, personId: string): Promise<PersonDetailResponseDto[]> {
@@ -66,6 +85,9 @@ export class PersonDetailService extends BaseService {
    * "+ Add detail" leaves behind, and failing a save because of one is a worse answer than
    * quietly not saving it. A subdetail whose parent is dropped that way goes with it, since it
    * qualifies something that is no longer being recorded.
+   *
+   * Archiving arrives as part of the list rather than as a separate call: the old row comes back
+   * with its id and an `until`, and the new value as a row without an id. Both are simply kept.
    */
   async updateDetails(
     auth: AuthDto,
@@ -75,14 +97,30 @@ export class PersonDetailService extends BaseService {
     await this.requireAccess({ auth, permission: Permission.PersonDetailUpdate, ids: [personId] });
 
     const items = dto.details
-      .map((detail) => ({
-        id: detail.id,
-        key: detail.key.trim(),
-        value: detail.value.trim(),
-        subdetails: (detail.subdetails ?? [])
-          .map((sub) => ({ id: sub.id, key: sub.key.trim(), value: sub.value.trim() }))
-          .filter((sub) => sub.key.length > 0 && sub.value.length > 0),
-      }))
+      .map((detail) => {
+        const since = asPeriod(detail.since, detail.sincePrecision);
+        const until = asPeriod(detail.until, detail.untilPrecision);
+
+        // Compared at the coarser of the two precisions, so "Mar 2019" to "2019" is accepted: a
+        // year-only date means some time in that year, not its first day.
+        const coarse = [since.precision, until.precision].includes(PersonDetailDatePrecision.Year) ? 4 : 7;
+        if (since.date && until.date && since.date.slice(0, coarse) > until.date.slice(0, coarse)) {
+          throw new BadRequestException('A detail cannot end before it began');
+        }
+
+        return {
+          id: detail.id,
+          key: detail.key.trim(),
+          value: detail.value.trim(),
+          since: since.date,
+          sincePrecision: since.precision,
+          until: until.date,
+          untilPrecision: until.precision,
+          subdetails: (detail.subdetails ?? [])
+            .map((sub) => ({ id: sub.id, key: sub.key.trim(), value: sub.value.trim() }))
+            .filter((sub) => sub.key.length > 0 && sub.value.length > 0),
+        };
+      })
       .filter((detail) => detail.key.length > 0 && detail.value.length > 0);
 
     // An id the person does not hold is a bug in the caller, not an insert: silently creating a row
@@ -127,8 +165,9 @@ export class PersonDetailService extends BaseService {
   /**
    * Adds the same details to many people at once, on top of whatever each already holds.
    *
-   * Nothing here deletes. The only way an existing value is lost is by naming its person under
-   * `replaceForPersonIds`, which the client only does for someone shown as already holding the key.
+   * Nothing here deletes. A person named under `replaceForPersonIds` — which the client only does
+   * for someone shown as already holding the key — has their Current value moved to Past, unless
+   * `archiveReplaced` is false, which is the one way an existing value is lost.
    */
   async addDetails(auth: AuthDto, dto: PersonDetailsBulkAddDto): Promise<void> {
     await this.requireAccess({ auth, permission: Permission.PersonDetailUpdate, ids: dto.personIds });
@@ -141,6 +180,7 @@ export class PersonDetailService extends BaseService {
           .map((sub) => ({ key: sub.key.trim(), value: sub.value.trim() }))
           .filter((sub) => sub.key.length > 0 && sub.value.length > 0),
         replaceForPersonIds: detail.replaceForPersonIds ?? [],
+        archiveReplaced: detail.archiveReplaced ?? true,
       }))
       .filter((detail) => detail.key.length > 0 && detail.value.length > 0);
 

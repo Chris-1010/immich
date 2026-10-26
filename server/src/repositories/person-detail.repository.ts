@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Kysely, sql, Transaction } from 'kysely';
+import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
+import { PersonDetailDatePrecision } from 'src/enum';
 import { DB } from 'src/schema';
 
 /** How many faces the along-with column will ever need behind a `+N`, however large the group is. */
@@ -27,11 +29,24 @@ export interface PersonDetail {
   sortOrder: number;
   /** When the detail was first recorded. Shown on hover as "how long ago" beside the exact date. */
   createdAt: Date;
+  since: Date | null;
+  sincePrecision: PersonDetailDatePrecision | null;
+  /** Null while the detail is Current; set once it is Past. */
+  until: Date | null;
+  untilPrecision: PersonDetailDatePrecision | null;
   subdetails: PersonSubdetail[];
 }
 
+/** A Since or Until date as it is written: already snapped to the start of its period. */
+export interface PersonDetailDates {
+  since: string | null;
+  sincePrecision: PersonDetailDatePrecision | null;
+  until: string | null;
+  untilPrecision: PersonDetailDatePrecision | null;
+}
+
 /** One detail as the caller wants it stored. No id means a row that does not exist yet. */
-export interface PersonDetailUpsert {
+export interface PersonDetailUpsert extends PersonDetailDates {
   id?: string;
   key: string;
   value: string;
@@ -65,13 +80,22 @@ export interface AlongWithPerson {
   matchedSubValues: string[];
 }
 
-/** Everyone else recording the same key and value, for one of a person's details. */
+/** One half of an along-with group, capped on its own so neither half can crowd out the other. */
+export interface AlongWithGroup {
+  people: AlongWithPerson[];
+  /** The true size of the half, which is above `people.length` once the cap is reached. */
+  total: number;
+}
+
+/**
+ * Everyone else recording the same key and value, for one of a person's details, split by whether
+ * their own matching row is Current or Past.
+ */
 export interface AlongWith {
   key: string;
   value: string;
-  people: AlongWithPerson[];
-  /** The true size of the group, which is above `people.length` once the cap is reached. */
-  total: number;
+  current: AlongWithGroup;
+  past: AlongWithGroup;
 }
 
 export interface PersonDetailSuggestion {
@@ -100,10 +124,31 @@ export interface BulkDetailItem {
    * rather than gaining a second row. Everyone else keeps what they had and gets this appended.
    */
   replaceForPersonIds: string[];
+  /**
+   * Whether a replaced value is moved to Past (and the new value added beside it as Current)
+   * rather than overwritten in place.
+   */
+  archiveReplaced: boolean;
 }
 
 /** The key and value as they are compared: both ends of a match are trimmed and lowercased. */
 const matchKey = (key: string, value: string) => `${key.trim().toLowerCase()} ${value.trim().toLowerCase()}`;
+
+/** What a subdetail carries, and a top-level row whose dates are unknown. */
+const NO_DATES: PersonDetailDates = { since: null, sincePrecision: null, until: null, untilPrecision: null };
+
+const DETAIL_COLUMNS = [
+  'id',
+  'parentId',
+  'key',
+  'value',
+  'sortOrder',
+  'createdAt',
+  'since',
+  'sincePrecision',
+  'until',
+  'untilPrecision',
+] as const;
 
 /** Every row of a person, top level and below, as one flat list ordered the way the page reads. */
 type StoredRow = {
@@ -113,6 +158,10 @@ type StoredRow = {
   value: string;
   sortOrder: number;
   createdAt: Date;
+  since: Date | null;
+  sincePrecision: PersonDetailDatePrecision | null;
+  until: Date | null;
+  untilPrecision: PersonDetailDatePrecision | null;
 };
 
 /**
@@ -135,6 +184,10 @@ const asDetails = (rows: StoredRow[]): PersonDetail[] => {
         value: row.value,
         sortOrder: row.sortOrder,
         createdAt: row.createdAt,
+        since: row.since,
+        sincePrecision: row.sincePrecision,
+        until: row.until,
+        untilPrecision: row.untilPrecision,
         subdetails: [],
       };
 
@@ -160,7 +213,7 @@ export class PersonDetailRepository {
   async getForPerson(personId: string): Promise<PersonDetail[]> {
     const rows = await this.db
       .selectFrom('person_detail')
-      .select(['id', 'parentId', 'key', 'value', 'sortOrder', 'createdAt'])
+      .select(DETAIL_COLUMNS)
       .where('personId', '=', personId)
       // createdAt breaks ties between rows saved in the same batch, which all carry the sort order
       // they were given but can share it with rows written before the list was ever reordered.
@@ -195,6 +248,11 @@ export class PersonDetailRepository {
    * classmate who shares three details would otherwise be as likely to fall outside the cap as an
    * alumnus who shares one, and the people worth surfacing are exactly the ones the cap must keep.
    *
+   * Current and Past are ignored when matching, on both sides: someone who used to work where the
+   * subject works now still shares the fact. They are read only to split each group in two by the
+   * other person's own row, each half ranked and capped on its own. Someone holding the pair both
+   * ways — a Past row and a Current one — counts as Current, since that is what they are today.
+   *
    * Pairs are compared lowercased but not trimmed, because every write trims first — so the two
    * are equivalent on stored data. It has to be written this way: trimming here would no longer
    * match the `(ownerId, lower(key), lower(value))` index and would put the whole library through
@@ -216,6 +274,11 @@ export class PersonDetailRepository {
             'detail.id as detailId',
             'person.id as personId',
             'person.name as name',
+            // Across all of this person's rows for the pair, not just this one, because the row kept
+            // further down is chosen for its subdetails and may well be the Past one.
+            sql<boolean>`bool_or(detail."until" is null) over (partition by lower(detail."key"), lower(detail."value"), person.id)`.as(
+              'isCurrent',
+            ),
           ])
           .where('detail.ownerId', '=', ownerId)
           .where('detail.personId', '!=', personId)
@@ -279,6 +342,7 @@ export class PersonDetailRepository {
             'matched.value as value',
             'matched.personId as personId',
             'matched.name as name',
+            'matched.isCurrent as isCurrent',
             sql<number>`coalesce("overlapCounts"."subShared", 0)`.as('subShared'),
             sql<string[]>`coalesce("overlapCounts"."subKeys", '{}')`.as('subKeys'),
             sql<string[]>`coalesce("overlapCounts"."subValues", '{}')`.as('subValues'),
@@ -303,10 +367,10 @@ export class PersonDetailRepository {
           .selectFrom('scored')
           .selectAll()
           .select([
-            sql<number>`row_number() over (partition by "key", "value" order by "subShared" desc, "shared" desc, "name", "personId")`.as(
+            sql<number>`row_number() over (partition by "key", "value", "isCurrent" order by "subShared" desc, "shared" desc, "name", "personId")`.as(
               'rank',
             ),
-            sql<number>`count(*) over (partition by "key", "value")`.as('total'),
+            sql<number>`count(*) over (partition by "key", "value", "isCurrent")`.as('total'),
           ]),
       )
       .selectFrom('ranked')
@@ -314,6 +378,7 @@ export class PersonDetailRepository {
       .where('rank', '<=', ALONG_WITH_LIMIT)
       .orderBy('key')
       .orderBy('value')
+      .orderBy('isCurrent', 'desc')
       .orderBy('rank')
       .execute();
 
@@ -324,12 +389,14 @@ export class PersonDetailRepository {
       const pair = matchKey(row.key, row.value);
       let group = byPair.get(pair);
       if (!group) {
-        group = { key: row.key, value: row.value, people: [], total: Number(row.total) };
+        group = { key: row.key, value: row.value, current: { people: [], total: 0 }, past: { people: [], total: 0 } };
         byPair.set(pair, group);
         groups.push(group);
       }
 
-      group.people.push({
+      const half = row.isCurrent ? group.current : group.past;
+      half.total = Number(row.total);
+      half.people.push({
         id: row.personId,
         name: row.name,
         matchedKeys: row.matchedKeys,
@@ -447,6 +514,9 @@ export class PersonDetailRepository {
    * What a bulk insert needs in order to say, before anything is written, whose list it is about to
    * add a second entry to. One row per person per key: someone holding a key twice is reported by
    * their first, since that is the one a replacement would rewrite.
+   *
+   * Only Current rows conflict. A Past value is history the new one cannot clash with — adding
+   * "Works at: Google" to someone who used to work at Intel is not a choice between the two.
    */
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID], [DummyValue.STRING]] })
   async getConflicts(ownerId: string, personIds: string[], keys: string[]): Promise<PersonDetailConflict[]> {
@@ -467,6 +537,7 @@ export class PersonDetailRepository {
       .where('detail.ownerId', '=', ownerId)
       .where('detail.personId', 'in', personIds)
       .where('detail.parentId', 'is', null)
+      .where('detail.until', 'is', null)
       .where(
         sql`lower(detail."key")`,
         'in',
@@ -488,8 +559,16 @@ export class PersonDetailRepository {
    *
    * Three outcomes per person per detail, and which one applies is decided from what they hold
    * rather than from what the caller assumed: a person already recording this exact pair keeps the
-   * row they have, a person the caller marked for replacement has their existing value rewritten,
+   * row they have, a person the caller marked for replacement has their existing value replaced,
    * and everyone else gains a row at the end of their list.
+   *
+   * Only Current rows are weighed. A Past row with the same pair is history, so the person still
+   * gains a Current one, and a Past row under the key is never what a replacement replaces.
+   *
+   * A replacement either archives or overwrites. Archiving gives every Current row of the key an
+   * `until` of this month — subdetails stay where they are, on the row they were written under —
+   * and adds the new value as a fresh Current row in the first archived row's place. Overwriting
+   * rewrites the first row in place, as it always did, keeping its subdetails under the new value.
    *
    * Subdetails are merged into whichever row that leaves, never duplicated. That is the case the
    * whole feature is for — adding a year to twelve people who already have the school — and it
@@ -502,11 +581,19 @@ export class PersonDetailRepository {
 
     await this.db.transaction().execute(async (tx) => {
       const casings = await keyCasings(tx, ownerId);
+      const thisMonth = DateTime.now().startOf('month').toISODate();
 
       for (const personId of personIds) {
-        const rows = await tx
+        const rows: Array<{
+          id: string;
+          parentId: string | null;
+          key: string;
+          value: string;
+          sortOrder: number;
+          isCurrent: boolean;
+        }> = await tx
           .selectFrom('person_detail')
-          .select(['id', 'parentId', 'key', 'value', 'sortOrder'])
+          .select(['id', 'parentId', 'key', 'value', 'sortOrder', sql<boolean>`"until" is null`.as('isCurrent')])
           .where('personId', '=', personId)
           .orderBy('sortOrder')
           .orderBy('createdAt')
@@ -518,25 +605,49 @@ export class PersonDetailRepository {
           const key = casings.get(item.key.trim().toLowerCase()) ?? item.key.trim();
           const value = item.value.trim();
 
-          const held = rows.filter((row) => row.parentId === null && row.key.toLowerCase() === key.toLowerCase());
+          const held = rows.filter(
+            (row) => row.parentId === null && row.isCurrent && row.key.toLowerCase() === key.toLowerCase(),
+          );
           const exact = held.find((row) => row.value.toLowerCase() === value.toLowerCase());
+          const replacing = held.length > 0 && item.replaceForPersonIds.includes(personId);
 
           let targetId: string;
           if (exact) {
             targetId = exact.id;
-          } else if (held.length > 0 && item.replaceForPersonIds.includes(personId)) {
+          } else if (replacing && !item.archiveReplaced) {
             targetId = held[0].id;
             await tx.updateTable('person_detail').set({ key, value }).where('id', '=', targetId).execute();
           } else {
+            let sortOrder = nextSortOrder;
+            if (replacing) {
+              await tx
+                .updateTable('person_detail')
+                .set({ until: thisMonth, untilPrecision: PersonDetailDatePrecision.Month })
+                .where(
+                  'id',
+                  'in',
+                  held.map((row) => row.id),
+                )
+                .execute();
+              for (const row of held) {
+                row.isCurrent = false;
+              }
+              // The new value takes the old one's place in the Current list rather than going to
+              // the end; the archived row keeps its sort order, which the Past list does not read.
+              sortOrder = held[0].sortOrder;
+            }
+
             const inserted = await tx
               .insertInto('person_detail')
-              .values({ ownerId, personId, key, value, sortOrder: nextSortOrder })
+              .values({ ownerId, personId, key, value, sortOrder })
               .returning('id')
               .executeTakeFirstOrThrow();
 
             targetId = inserted.id;
-            rows.push({ id: targetId, parentId: null, key, value, sortOrder: nextSortOrder });
-            nextSortOrder += 1;
+            rows.push({ id: targetId, parentId: null, key, value, sortOrder, isCurrent: true });
+            if (!replacing) {
+              nextSortOrder += 1;
+            }
           }
 
           casings.set(key.toLowerCase(), key);
@@ -568,6 +679,7 @@ export class PersonDetailRepository {
               key: subKey,
               value: subValue,
               sortOrder: nextSubOrder,
+              isCurrent: true,
             });
             casings.set(subKey.toLowerCase(), subKey);
             nextSubOrder += 1;
@@ -588,6 +700,12 @@ export class PersonDetailRepository {
    * Items carrying an id update the row they name; items without one are inserted. Ids the person
    * does not hold are rejected by the caller before this runs, so an id that reaches here and
    * matches nothing simply updates nothing.
+   *
+   * Past rows are part of the list like any other: one sent back is kept, one left out is deleted.
+   * Archiving is therefore two items — the old row with its id and an `until`, still carrying its
+   * subdetails, and the new value without an id — and nothing here has to know which is which.
+   * Dates are written on top-level rows only, and cleared on anything written as a subdetail, since
+   * a subdetail lives and dies with its parent.
    */
   async replaceForPerson(ownerId: string, personId: string, items: PersonDetailUpsert[]): Promise<PersonDetail[]> {
     return this.db.transaction().execute(async (tx) => {
@@ -607,7 +725,12 @@ export class PersonDetailRepository {
       // A key already in the library keeps the casing the library uses, so "hometown" typed here
       // joins the "Hometown" everyone else is grouped under instead of splitting the group. A key
       // introduced by this batch is itself the casing later rows in the batch snap to.
-      const write = async (item: PersonSubdetailUpsert, parentId: string | null, sortOrder: number) => {
+      const write = async (
+        item: PersonSubdetailUpsert,
+        parentId: string | null,
+        sortOrder: number,
+        dates: PersonDetailDates = NO_DATES,
+      ) => {
         const value = item.value.trim();
         const typed = item.key.trim();
         const key = casings.get(typed.toLowerCase()) ?? typed;
@@ -616,7 +739,7 @@ export class PersonDetailRepository {
         if (item.id) {
           await tx
             .updateTable('person_detail')
-            .set({ key, value, sortOrder, parentId })
+            .set({ key, value, sortOrder, parentId, ...dates })
             .where('id', '=', item.id)
             .where('personId', '=', personId)
             .execute();
@@ -626,7 +749,7 @@ export class PersonDetailRepository {
 
         const inserted = await tx
           .insertInto('person_detail')
-          .values({ ownerId, personId, parentId, key, value, sortOrder })
+          .values({ ownerId, personId, parentId, key, value, sortOrder, ...dates })
           .returning('id')
           .executeTakeFirstOrThrow();
 
@@ -634,7 +757,8 @@ export class PersonDetailRepository {
       };
 
       for (const [sortOrder, item] of items.entries()) {
-        const parentId = await write(item, null, sortOrder);
+        const { since, sincePrecision, until, untilPrecision } = item;
+        const parentId = await write(item, null, sortOrder, { since, sincePrecision, until, untilPrecision });
 
         for (const [subOrder, sub] of item.subdetails.entries()) {
           await write(sub, parentId, subOrder);
@@ -643,7 +767,7 @@ export class PersonDetailRepository {
 
       const rows = await tx
         .selectFrom('person_detail')
-        .select(['id', 'parentId', 'key', 'value', 'sortOrder', 'createdAt'])
+        .select(DETAIL_COLUMNS)
         .where('personId', '=', personId)
         .orderBy('sortOrder')
         .orderBy('createdAt')
