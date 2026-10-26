@@ -3,7 +3,7 @@ import { Kysely, sql, Transaction } from 'kysely';
 import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import { DummyValue, GenerateSql } from 'src/decorators';
-import { PersonDetailDatePrecision } from 'src/enum';
+import { PersonDetailDatePrecision, PersonDetailKind } from 'src/enum';
 import { DB } from 'src/schema';
 
 /** How many faces the along-with column will ever need behind a `+N`, however large the group is. */
@@ -34,7 +34,18 @@ export interface PersonDetail {
   /** Null while the detail is Current; set once it is Past. */
   until: Date | null;
   untilPrecision: PersonDetailDatePrecision | null;
+  /** The contact field this is, or null for free text. */
+  kind: PersonDetailKind | null;
+  latitude: number | null;
+  longitude: number | null;
   subdetails: PersonSubdetail[];
+}
+
+/** What makes a top-level row a contact field, and where a Home or Work one is pinned. */
+export interface PersonDetailKindFields {
+  kind: PersonDetailKind | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** A Since or Until date as it is written: already snapped to the start of its period. */
@@ -46,7 +57,7 @@ export interface PersonDetailDates {
 }
 
 /** One detail as the caller wants it stored. No id means a row that does not exist yet. */
-export interface PersonDetailUpsert extends PersonDetailDates {
+export interface PersonDetailUpsert extends PersonDetailDates, PersonDetailKindFields {
   id?: string;
   key: string;
   value: string;
@@ -105,8 +116,10 @@ export interface PersonDetailSuggestion {
 
 /** One person already recording a key that a bulk insert is about to write. */
 export interface PersonDetailConflict {
-  /** The existing row, lowercased, which is the form the caller matched on. */
-  key: string;
+  /** The existing row's key, lowercased, which is the form the caller matched on; null for a kind row. */
+  key: string | null;
+  /** The existing row's kind, for a conflict found by kind rather than by key. */
+  kind: PersonDetailKind | null;
   personId: string;
   name: string;
   detailId: string;
@@ -115,7 +128,7 @@ export interface PersonDetailConflict {
 }
 
 /** One detail as a bulk insert wants it written across many people at once. */
-export interface BulkDetailItem {
+export interface BulkDetailItem extends PersonDetailKindFields {
   key: string;
   value: string;
   subdetails: PersonSubdetailUpsert[];
@@ -131,11 +144,37 @@ export interface BulkDetailItem {
   archiveReplaced: boolean;
 }
 
-/** The key and value as they are compared: both ends of a match are trimmed and lowercased. */
+/** A subdetail's key and value as they are compared: both ends trimmed and lowercased. */
 const matchKey = (key: string, value: string) => `${key.trim().toLowerCase()} ${value.trim().toLowerCase()}`;
+
+/**
+ * Marks a kind token apart from any free-text key. A control character, because nothing typed
+ * into a key field can produce one, so the token for Home can never be read as a key spelled
+ * "home". The SQL side builds the same token with `chr(1)`.
+ */
+const KIND_TOKEN_PREFIX = '\u0001';
+
+/**
+ * What a top-level row is matched on in place of its key: its kind for a contact field, whatever
+ * key text it was saved under, or its lowercased key for a free-text detail. "Home: Rathmines"
+ * saved as "Home" and as "Baile" are the same fact; "Home: Rathmines" as free text is not.
+ */
+export const detailKeyToken = (detail: { kind: PersonDetailKind | null; key: string }) =>
+  detail.kind ? `${KIND_TOKEN_PREFIX}${detail.kind}` : detail.key.trim().toLowerCase();
+
+/** A top-level row's identity for along-with and merging: its key token and lowercased value. */
+export const detailMatchKey = (detail: { kind: PersonDetailKind | null; key: string; value: string }) =>
+  `${detailKeyToken(detail)} ${detail.value.trim().toLowerCase()}`;
+
+/** {@link detailKeyToken} in SQL, for a `person_detail` row under the given alias. */
+const keyToken = (alias: string) =>
+  sql<string>`case when ${sql.ref(`${alias}.kind`)} is null then lower(${sql.ref(`${alias}.key`)}) else chr(1) || ${sql.ref(`${alias}.kind`)} end`;
 
 /** What a subdetail carries, and a top-level row whose dates are unknown. */
 const NO_DATES: PersonDetailDates = { since: null, sincePrecision: null, until: null, untilPrecision: null };
+
+/** What a subdetail carries: it is never a contact field and never pinned. */
+const NO_KIND: PersonDetailKindFields = { kind: null, latitude: null, longitude: null };
 
 const DETAIL_COLUMNS = [
   'id',
@@ -148,6 +187,9 @@ const DETAIL_COLUMNS = [
   'sincePrecision',
   'until',
   'untilPrecision',
+  'kind',
+  'latitude',
+  'longitude',
 ] as const;
 
 /** Every row of a person, top level and below, as one flat list ordered the way the page reads. */
@@ -162,6 +204,9 @@ type StoredRow = {
   sincePrecision: PersonDetailDatePrecision | null;
   until: Date | null;
   untilPrecision: PersonDetailDatePrecision | null;
+  kind: PersonDetailKind | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 /**
@@ -188,6 +233,9 @@ const asDetails = (rows: StoredRow[]): PersonDetail[] => {
         sincePrecision: row.sincePrecision,
         until: row.until,
         untilPrecision: row.untilPrecision,
+        kind: row.kind,
+        latitude: row.latitude,
+        longitude: row.longitude,
         subdetails: [],
       };
 
@@ -257,6 +305,12 @@ export class PersonDetailRepository {
    * are equivalent on stored data. It has to be written this way: trimming here would no longer
    * match the `(ownerId, lower(key), lower(value))` index and would put the whole library through
    * a sequential scan on every page load.
+   *
+   * Contact fields match on kind and value instead of key and value, so a Home saved under one
+   * label matches a Home saved under another. A kind row and a free-text row never match, even with
+   * the same key text: the two halves of the match are kept apart in the WHERE so each still reads
+   * its own index. From there on every group is keyed by the token `detailKeyToken` describes,
+   * which is what the `key` column below carries — lowercased key text, or the marked kind.
    */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
   async getAlongWith(ownerId: string, personId: string): Promise<AlongWith[]> {
@@ -269,14 +323,14 @@ export class PersonDetailRepository {
           .selectFrom('person_detail as detail')
           .innerJoin('person', 'person.id', 'detail.personId')
           .select([
-            sql<string>`lower(detail."key")`.as('key'),
+            keyToken('detail').as('key'),
             sql<string>`lower(detail."value")`.as('value'),
             'detail.id as detailId',
             'person.id as personId',
             'person.name as name',
             // Across all of this person's rows for the pair, not just this one, because the row kept
             // further down is chosen for its subdetails and may well be the Past one.
-            sql<boolean>`bool_or(detail."until" is null) over (partition by lower(detail."key"), lower(detail."value"), person.id)`.as(
+            sql<boolean>`bool_or(detail."until" is null) over (partition by ${keyToken('detail')}, lower(detail."value"), person.id)`.as(
               'isCurrent',
             ),
           ])
@@ -284,9 +338,16 @@ export class PersonDetailRepository {
           .where('detail.personId', '!=', personId)
           .where('detail.parentId', 'is', null)
           .where(
-            sql`(lower(detail."key"), lower(detail."value"))`,
-            'in',
-            sql`(select lower("key"), lower("value") from "person_detail" where "personId" = ${personId} and "parentId" is null)`,
+            sql<boolean>`(
+              (detail."kind" is null and (lower(detail."key"), lower(detail."value")) in (
+                select lower("key"), lower("value") from "person_detail"
+                where "personId" = ${personId} and "parentId" is null and "kind" is null
+              ))
+              or (detail."kind" is not null and (detail."kind", lower(detail."value")) in (
+                select "kind", lower("value") from "person_detail"
+                where "personId" = ${personId} and "parentId" is null and "kind" is not null
+              ))
+            )`,
           ),
       )
       // The subject's own subdetails, carrying the pair they hang from, so a match can be required
@@ -296,7 +357,7 @@ export class PersonDetailRepository {
           .selectFrom('person_detail as parent')
           .innerJoin('person_detail as sub', 'sub.parentId', 'parent.id')
           .select([
-            sql<string>`lower(parent."key")`.as('key'),
+            keyToken('parent').as('key'),
             sql<string>`lower(parent."value")`.as('value'),
             sql<string>`lower(sub."key")`.as('subKey'),
             sql<string>`lower(sub."value")`.as('subValue'),
@@ -420,6 +481,9 @@ export class PersonDetailRepository {
    * "Class of" is not something to record about a person on its own; with one, only the keys
    * already written under that same parent key are, which is what makes the subdetail row of a
    * school offer the years rather than the whole library's vocabulary.
+   *
+   * Contact-field rows are left out: their key is the kind's name, which has a chip of its own, and
+   * offering it as a free-text key would only invite a second, unkinded "Home".
    */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING, DummyValue.NUMBER] })
   async getKeySuggestions(
@@ -434,6 +498,7 @@ export class PersonDetailRepository {
           .selectFrom('person_detail as detail')
           .select(['detail.key as key', (eb) => eb.fn.countAll<string>().as('count')])
           .where('detail.ownerId', '=', ownerId)
+          .where('detail.kind', 'is', null)
           .$if(!parentKey, (qb) => qb.where('detail.parentId', 'is', null))
           .$if(!!parentKey, (qb) =>
             qb
@@ -463,11 +528,17 @@ export class PersonDetailRepository {
     return rows.map((row) => ({ value: row.value, count: Number(row.total) }));
   }
 
-  /** The values recorded under one key, ranked the same way and scoped the same way as the keys. */
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING, DummyValue.STRING, DummyValue.NUMBER] })
+  /**
+   * The values recorded under one key, ranked the same way and scoped the same way as the keys.
+   *
+   * A key names free-text rows only; a kind names that contact field's rows, whatever key text they
+   * were saved under. Either way the two never mix, matching how along-with groups them. Under a
+   * parent key the kind is not read: a subdetail has none, and its parent is found by key text.
+   */
+  @GenerateSql({ params: [DummyValue.UUID, { key: DummyValue.STRING }, DummyValue.STRING, DummyValue.NUMBER] })
   async getValueSuggestions(
     ownerId: string,
-    key: string,
+    by: { key?: string; kind?: PersonDetailKind },
     term: string,
     limit: number,
     parentKey?: string,
@@ -478,7 +549,9 @@ export class PersonDetailRepository {
           .selectFrom('person_detail as detail')
           .select(['detail.value as value', (eb) => eb.fn.countAll<string>().as('count')])
           .where('detail.ownerId', '=', ownerId)
-          .where(sql`lower(detail."key")`, '=', key.trim().toLowerCase())
+          .$if(!!by.kind, (qb) => qb.where('detail.kind', '=', by.kind!))
+          .$if(!by.kind, (qb) => qb.where(sql`lower(detail."key")`, '=', by.key?.trim().toLowerCase() ?? ''))
+          .$if(!by.kind && !parentKey, (qb) => qb.where('detail.kind', 'is', null))
           .$if(!parentKey, (qb) => qb.where('detail.parentId', 'is', null))
           .$if(!!parentKey, (qb) =>
             qb
@@ -517,18 +590,28 @@ export class PersonDetailRepository {
    *
    * Only Current rows conflict. A Past value is history the new one cannot clash with — adding
    * "Works at: Google" to someone who used to work at Intel is not a choice between the two.
+   *
+   * Keys find free-text rows and kinds find contact-field rows, never the other way round: a Home
+   * conflicts with another Home whatever either is labelled, and a free-text "Home" with neither.
    */
-  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID], [DummyValue.STRING]] })
-  async getConflicts(ownerId: string, personIds: string[], keys: string[]): Promise<PersonDetailConflict[]> {
-    if (personIds.length === 0 || keys.length === 0) {
+  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID], [DummyValue.STRING], [PersonDetailKind.Home]] })
+  async getConflicts(
+    ownerId: string,
+    personIds: string[],
+    keys: string[],
+    kinds: PersonDetailKind[] = [],
+  ): Promise<PersonDetailConflict[]> {
+    if (personIds.length === 0 || (keys.length === 0 && kinds.length === 0)) {
       return [];
     }
 
+    const lowered = keys.map((key) => key.trim().toLowerCase());
     const rows = await this.db
       .selectFrom('person_detail as detail')
       .innerJoin('person', 'person.id', 'detail.personId')
       .select([
-        sql<string>`lower(detail."key")`.as('key'),
+        sql<string | null>`case when detail."kind" is null then lower(detail."key") end`.as('key'),
+        'detail.kind as kind',
         'person.id as personId',
         'person.name as name',
         'detail.id as detailId',
@@ -538,13 +621,16 @@ export class PersonDetailRepository {
       .where('detail.personId', 'in', personIds)
       .where('detail.parentId', 'is', null)
       .where('detail.until', 'is', null)
-      .where(
-        sql`lower(detail."key")`,
-        'in',
-        keys.map((key) => key.trim().toLowerCase()),
+      .where((eb) =>
+        eb.or([
+          ...(lowered.length > 0
+            ? [eb.and([eb('detail.kind', 'is', null), eb(sql`lower(detail."key")`, 'in', lowered)])]
+            : []),
+          ...(kinds.length > 0 ? [eb('detail.kind', 'in', kinds)] : []),
+        ]),
       )
-      .distinctOn([sql`lower(detail."key")`, 'detail.personId'])
-      .orderBy(sql`lower(detail."key")`)
+      .distinctOn([keyToken('detail'), 'detail.personId'])
+      .orderBy(keyToken('detail'))
       .orderBy('detail.personId')
       .orderBy('detail.sortOrder')
       .orderBy('detail.createdAt')
@@ -573,6 +659,10 @@ export class PersonDetailRepository {
    * Subdetails are merged into whichever row that leaves, never duplicated. That is the case the
    * whole feature is for — adding a year to twelve people who already have the school — and it
    * would not work if an untouched row were also left untouched by its subdetails.
+   *
+   * A contact field is weighed against the person's Current rows of the same kind, never by key
+   * text, and a free-text item only against free-text rows. A pinned item that lands on a row the
+   * person already holds gives that row its pin; one without a pin leaves the row's pin alone.
    */
   async addForPeople(ownerId: string, personIds: string[], items: BulkDetailItem[]): Promise<void> {
     if (personIds.length === 0 || items.length === 0) {
@@ -590,10 +680,19 @@ export class PersonDetailRepository {
           key: string;
           value: string;
           sortOrder: number;
+          kind: PersonDetailKind | null;
           isCurrent: boolean;
         }> = await tx
           .selectFrom('person_detail')
-          .select(['id', 'parentId', 'key', 'value', 'sortOrder', sql<boolean>`"until" is null`.as('isCurrent')])
+          .select([
+            'id',
+            'parentId',
+            'key',
+            'value',
+            'sortOrder',
+            'kind',
+            sql<boolean>`"until" is null`.as('isCurrent'),
+          ])
           .where('personId', '=', personId)
           .orderBy('sortOrder')
           .orderBy('createdAt')
@@ -605,8 +704,14 @@ export class PersonDetailRepository {
           const key = casings.get(item.key.trim().toLowerCase()) ?? item.key.trim();
           const value = item.value.trim();
 
+          const { kind, latitude, longitude } = item;
+          const pin = kind && latitude !== null && longitude !== null ? { latitude, longitude } : undefined;
+
           const held = rows.filter(
-            (row) => row.parentId === null && row.isCurrent && row.key.toLowerCase() === key.toLowerCase(),
+            (row) =>
+              row.parentId === null &&
+              row.isCurrent &&
+              (kind ? row.kind === kind : row.kind === null && row.key.toLowerCase() === key.toLowerCase()),
           );
           const exact = held.find((row) => row.value.toLowerCase() === value.toLowerCase());
           const replacing = held.length > 0 && item.replaceForPersonIds.includes(personId);
@@ -614,9 +719,18 @@ export class PersonDetailRepository {
           let targetId: string;
           if (exact) {
             targetId = exact.id;
+            if (pin) {
+              await tx.updateTable('person_detail').set(pin).where('id', '=', targetId).execute();
+            }
           } else if (replacing && !item.archiveReplaced) {
             targetId = held[0].id;
-            await tx.updateTable('person_detail').set({ key, value }).where('id', '=', targetId).execute();
+            // An overwritten place is a different place, so the old pin cannot stay with it.
+            const moved = kind ? (pin ?? { latitude: null, longitude: null }) : {};
+            await tx
+              .updateTable('person_detail')
+              .set({ key, value, ...moved })
+              .where('id', '=', targetId)
+              .execute();
           } else {
             let sortOrder = nextSortOrder;
             if (replacing) {
@@ -639,12 +753,12 @@ export class PersonDetailRepository {
 
             const inserted = await tx
               .insertInto('person_detail')
-              .values({ ownerId, personId, key, value, sortOrder })
+              .values({ ownerId, personId, key, value, sortOrder, kind, ...pin })
               .returning('id')
               .executeTakeFirstOrThrow();
 
             targetId = inserted.id;
-            rows.push({ id: targetId, parentId: null, key, value, sortOrder, isCurrent: true });
+            rows.push({ id: targetId, parentId: null, key, value, sortOrder, kind, isCurrent: true });
             if (!replacing) {
               nextSortOrder += 1;
             }
@@ -679,6 +793,7 @@ export class PersonDetailRepository {
               key: subKey,
               value: subValue,
               sortOrder: nextSubOrder,
+              kind: null,
               isCurrent: true,
             });
             casings.set(subKey.toLowerCase(), subKey);
@@ -705,7 +820,8 @@ export class PersonDetailRepository {
    * Archiving is therefore two items — the old row with its id and an `until`, still carrying its
    * subdetails, and the new value without an id — and nothing here has to know which is which.
    * Dates are written on top-level rows only, and cleared on anything written as a subdetail, since
-   * a subdetail lives and dies with its parent.
+   * a subdetail lives and dies with its parent. Kind and pin likewise: written on top-level rows
+   * as sent, always cleared on a subdetail.
    */
   async replaceForPerson(ownerId: string, personId: string, items: PersonDetailUpsert[]): Promise<PersonDetail[]> {
     return this.db.transaction().execute(async (tx) => {
@@ -730,6 +846,7 @@ export class PersonDetailRepository {
         parentId: string | null,
         sortOrder: number,
         dates: PersonDetailDates = NO_DATES,
+        kindFields: PersonDetailKindFields = NO_KIND,
       ) => {
         const value = item.value.trim();
         const typed = item.key.trim();
@@ -739,7 +856,7 @@ export class PersonDetailRepository {
         if (item.id) {
           await tx
             .updateTable('person_detail')
-            .set({ key, value, sortOrder, parentId, ...dates })
+            .set({ key, value, sortOrder, parentId, ...dates, ...kindFields })
             .where('id', '=', item.id)
             .where('personId', '=', personId)
             .execute();
@@ -749,7 +866,7 @@ export class PersonDetailRepository {
 
         const inserted = await tx
           .insertInto('person_detail')
-          .values({ ownerId, personId, parentId, key, value, sortOrder, ...dates })
+          .values({ ownerId, personId, parentId, key, value, sortOrder, ...dates, ...kindFields })
           .returning('id')
           .executeTakeFirstOrThrow();
 
@@ -757,8 +874,14 @@ export class PersonDetailRepository {
       };
 
       for (const [sortOrder, item] of items.entries()) {
-        const { since, sincePrecision, until, untilPrecision } = item;
-        const parentId = await write(item, null, sortOrder, { since, sincePrecision, until, untilPrecision });
+        const { since, sincePrecision, until, untilPrecision, kind, latitude, longitude } = item;
+        const parentId = await write(
+          item,
+          null,
+          sortOrder,
+          { since, sincePrecision, until, untilPrecision },
+          { kind, latitude, longitude },
+        );
 
         for (const [subOrder, sub] of item.subdetails.entries()) {
           await write(sub, parentId, subOrder);
@@ -786,12 +909,13 @@ export class PersonDetailRepository {
    * the same fact stated twice is noise, and the primary's row is the one already positioned. Its
    * subdetails are not dropped with it, since a duplicate school can still be the only place a year
    * was ever written down — they are merged into the row that survives, minus any already there.
+   * Contact fields are paired by kind and value, the same way along-with pairs them.
    */
   async reassign(fromPersonId: string, toPersonId: string): Promise<void> {
     await this.db.transaction().execute(async (tx) => {
       const rows = await tx
         .selectFrom('person_detail')
-        .select(['id', 'personId', 'parentId', 'key', 'value', 'sortOrder'])
+        .select(['id', 'personId', 'parentId', 'key', 'value', 'sortOrder', 'kind'])
         .where('personId', 'in', [fromPersonId, toPersonId])
         .orderBy('sortOrder')
         .orderBy('createdAt')
@@ -816,7 +940,7 @@ export class PersonDetailRepository {
         }
 
         if (row.personId === toPersonId) {
-          heldBy.set(matchKey(row.key, row.value), row.id);
+          heldBy.set(detailMatchKey(row), row.id);
           nextSortOrder = Math.max(nextSortOrder, row.sortOrder + 1);
         } else {
           moving.push(row);
@@ -825,7 +949,7 @@ export class PersonDetailRepository {
 
       const redundant: string[] = [];
       for (const row of moving) {
-        const pair = matchKey(row.key, row.value);
+        const pair = detailMatchKey(row);
         const survivor = heldBy.get(pair);
 
         if (survivor) {
