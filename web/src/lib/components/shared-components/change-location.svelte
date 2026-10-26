@@ -5,8 +5,12 @@
   }
 
   // The modal resolves to one of three outcomes: applying real coordinates, toggling the No Location
-  // marker (value: true to mark, false to unassign), or being dismissed (undefined).
-  export type ChangeLocationResult = { type: 'coordinates'; point: Point } | { type: 'noLocation'; value: boolean };
+  // marker (value: true to mark, false to unassign), or being dismissed (undefined). `name` is the
+  // saved location or search result the point came from, and is absent once the point was moved by
+  // hand (map click or typed coordinates), since the name no longer describes it.
+  export type ChangeLocationResult =
+    | { type: 'coordinates'; point: Point; name?: string }
+    | { type: 'noLocation'; value: boolean };
 </script>
 
 <script lang="ts">
@@ -28,10 +32,16 @@
   interface Props {
     asset?: AssetResponseDto | undefined;
     point?: Point;
+    /**
+     * Pick a point that is not an asset's location, such as a person's Home pin. Hides the asset-only
+     * No Location / Unassign action and leaves "last chosen location" alone, so pinning a home does
+     * not move where the next asset edit opens. Pass the existing pin as `point` to open on it.
+     */
+    pointOnly?: boolean;
     onClose: (result?: ChangeLocationResult) => void;
   }
 
-  let { asset = undefined, point: initialPoint, onClose }: Props = $props();
+  let { asset = undefined, point: initialPoint, pointOnly = false, onClose }: Props = $props();
 
   let places: PlacesResponseDto[] = $state([]);
   let suggestedPlaces: PlacesResponseDto[] = $derived(places.slice(0, 5));
@@ -69,6 +79,7 @@
   let showSaveInput = $state(false);
   let saveNameInput = $state('');
   let savedFilter = $state('');
+  let pickedName: string | undefined = $state();
 
   // A single asset already marked No Location offers "Unassign Location"; otherwise (including bulk
   // mode, where no single asset is passed) the action marks the selection No Location.
@@ -78,8 +89,10 @@
     if (!point) {
       return;
     }
-    lastChosenLocation.set(point);
-    onClose({ type: 'coordinates', point });
+    if (!pointOnly) {
+      lastChosenLocation.set(point);
+    }
+    onClose({ type: 'coordinates', point, name: pickedName });
   };
 
   const handleNoLocation = () => {
@@ -122,9 +135,10 @@
     latestSearchTimeout = searchTimeout;
   };
 
-  const handleUseSuggested = (latitude: number, longitude: number, place?: PlacesResponseDto) => {
+  const handleUseSuggested = (latitude: number, longitude: number, place?: PlacesResponseDto, name?: string) => {
     hideSuggestion = true;
     selectedPlace = place;
+    pickedName = place ? getLocation(place.name, place.admin1name, place.admin2name) : name;
     showSaveInput = false;
     saveNameInput = '';
     point = { lng: longitude, lat: latitude };
@@ -132,7 +146,9 @@
   };
 
   const handleOpenSaveInput = () => {
-    saveNameInput = selectedPlace ? getLocation(selectedPlace.name, selectedPlace.admin1name, selectedPlace.admin2name) : '';
+    saveNameInput = selectedPlace
+      ? getLocation(selectedPlace.name, selectedPlace.admin1name, selectedPlace.admin2name)
+      : '';
     showSaveInput = true;
   };
 
@@ -147,6 +163,7 @@
   const onUpdate = (lat: number, lng: number) => {
     point = { lat, lng };
     selectedPlace = undefined;
+    pickedName = undefined;
     showSaveInput = false;
     saveNameInput = '';
     mapElement?.addClipMapMarker(lng, lat);
@@ -226,7 +243,10 @@
               center={mapLat && mapLng ? { lat: mapLat, lng: mapLng } : undefined}
               simplified={true}
               clickable={true}
-              onClickPoint={(selected) => (point = selected)}
+              onClickPoint={(selected) => {
+                point = selected;
+                pickedName = undefined;
+              }}
               showSettings={false}
               rounded
             />
@@ -239,7 +259,9 @@
       </div>
 
       <!-- Right: saved locations sidebar -->
-      <div class="flex w-full shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:w-56 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 dark:border-gray-700">
+      <div
+        class="flex w-full shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:w-56 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 dark:border-gray-700"
+      >
         <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           {$t('saved_locations')}
         </p>
@@ -257,12 +279,16 @@
           {#if $savedLocations.length === 0}
             <p class="text-sm text-gray-400 dark:text-gray-500">{$t('no_saved_locations')}</p>
           {:else}
-            {#each $savedLocations.map((loc, i) => ({ loc, i })).filter(({ loc }) => loc.name.toLowerCase().includes(savedFilter.toLowerCase())) as { loc, i } (loc.latitude + loc.longitude + loc.name)}
+            {#each $savedLocations
+              .map((loc, i) => ({ loc, i }))
+              .filter(({ loc }) => loc.name
+                  .toLowerCase()
+                  .includes(savedFilter.toLowerCase())) as { loc, i } (loc.latitude + loc.longitude + loc.name)}
               <div class="flex items-center gap-1">
                 <button
                   type="button"
                   class="flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 hover:dark:bg-gray-700"
-                  onclick={() => handleUseSuggested(loc.latitude, loc.longitude)}
+                  onclick={() => handleUseSuggested(loc.latitude, loc.longitude, undefined, loc.name)}
                 >
                   {loc.name}
                 </button>
@@ -324,15 +350,17 @@
       <Button shape="round" color="secondary" fullWidth onclick={() => onClose()}>
         {$t('cancel')}
       </Button>
-      <Button
-        shape="round"
-        color="secondary"
-        fullWidth
-        leadingIcon={mdiMapMarkerOffOutline}
-        onclick={handleNoLocation}
-      >
-        {isAssetNoLocation ? $t('unassign_location') : $t('no_location')}
-      </Button>
+      {#if !pointOnly}
+        <Button
+          shape="round"
+          color="secondary"
+          fullWidth
+          leadingIcon={mdiMapMarkerOffOutline}
+          onclick={handleNoLocation}
+        >
+          {isAssetNoLocation ? $t('unassign_location') : $t('no_location')}
+        </Button>
+      {/if}
       <Button shape="round" color="primary" fullWidth disabled={!point} onclick={handleApplyCoordinates}>
         {$t('confirm')}
       </Button>
