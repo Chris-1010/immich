@@ -7,13 +7,15 @@
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import EditNameInput from '$lib/components/faces-page/edit-name-input.svelte';
   import { setPersonPageContext } from '$lib/components/faces-page/person-page-context';
+  import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
   import PersonDetailsBox from '$lib/components/faces-page/person-details-box.svelte';
   import { AppRoute, PersonPageViewMode, QueryParameter, SessionStorageKey } from '$lib/constants';
   import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
+  import PersonEditBirthDateModal from '$lib/modals/PersonEditBirthDateModal.svelte';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
-  import { locale } from '$lib/stores/preferences.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
+  import { asEndedPayload } from '$lib/utils/contact-fields';
   import { handleError } from '$lib/utils/handle-error';
   import { isExternalUrl } from '$lib/utils/navigation';
   import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
@@ -21,13 +23,14 @@
     getPersonStatistics,
     searchPerson,
     updatePerson,
+    updatePersonDetails,
+    type PersonDetailKind,
     type PersonDetailResponseDto,
     type PersonResponseDto,
     type RelationshipGender,
   } from '@immich/sdk';
   import { Icon, LoadingSpinner, modalManager, toastManager } from '@immich/ui';
   import { mdiAccountMultipleOutline, mdiImageMultipleOutline } from '@mdi/js';
-  import { DateTime } from 'luxon';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
   import type { LayoutData } from './$types';
@@ -124,6 +127,34 @@
     const saved = await modalManager.show(PersonDetailsModal, { personId: person.id, details });
     if (saved) {
       details = saved;
+    }
+  };
+
+  /** A chip's way into its editor. Each kind is edited on its own, apart from the free-text list. */
+  const handleEditContactField = async (_: PersonDetailKind) => {
+    await handleEditDetails();
+  };
+
+  /**
+   * End from a chip's popover: the value stopped holding this month. The rest of the list goes back
+   * exactly as it came, since the save replaces the whole of it.
+   */
+  const handleEndContactField = async (detail: PersonDetailResponseDto) => {
+    try {
+      details = await updatePersonDetails({
+        id: person.id,
+        personDetailsUpdateDto: { details: asEndedPayload(details, detail.id) },
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_details'));
+    }
+  };
+
+  /** The birthday chip opens the same modal the photos page menu has always used for it. */
+  const handleEditBirthDate = async () => {
+    const updated = await modalManager.show(PersonEditBirthDateModal, { person });
+    if (updated) {
+      person = updated;
     }
   };
 
@@ -323,27 +354,25 @@
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {$t('assets_count', { values: { count: numberOfAssets } })}
                   </p>
-                  {#if person.birthDate}
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {$t('person_birthdate', {
-                        values: {
-                          date: DateTime.fromISO(person.birthDate).toLocaleString(
-                            {
-                              month: 'numeric',
-                              day: 'numeric',
-                              year: 'numeric',
-                            },
-                            { locale: $locale },
-                          ),
-                        },
-                      })}
-                    </p>
-                  {/if}
                 </div>
               </button>
             </div>
           {/if}
         </section>
+        <!-- Under the name rather than inside its button: each chip is a button of its own, and a
+             button cannot hold another. Indented to line up with the name past the thumbnail. -->
+        {#if !isEditingName}
+          <div class="ps-[4.375rem] pt-1 w-64 sm:w-96">
+            <PersonContactChips
+              {person}
+              {details}
+              {genders}
+              onEdit={handleEditContactField}
+              onEnd={handleEndContactField}
+              onEditBirthDate={handleEditBirthDate}
+            />
+          </div>
+        {/if}
         {#if isEditingName}
           <div class="absolute w-64 sm:w-96 z-1">
             {#if isSearchingPeople}
