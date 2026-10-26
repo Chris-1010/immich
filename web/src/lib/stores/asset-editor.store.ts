@@ -1,4 +1,13 @@
 import CropTool from '$lib/components/asset-viewer/editor/crop-tool/crop-tool.svelte';
+import {
+  createSavedLocation,
+  createSavedLocations,
+  deleteSavedLocation,
+  getSavedLocations,
+  updateSavedLocation,
+  type SavedLocationCreateDto,
+  type SavedLocationResponseDto,
+} from '@immich/sdk';
 import { mdiCropRotate } from '@mdi/js';
 import { derived, get, writable } from 'svelte/store';
 
@@ -19,55 +28,103 @@ export const changedOriention = derived(normaizedRorateDegrees, () => get(normai
 export const showCancelConfirmDialog = writable<boolean | CallableFunction>(false);
 export const lastChosenLocation = writable<{ lng: number; lat: number } | null>(null);
 
-export type SavedLocation = {
-  name: string;
-  latitude: number;
-  longitude: number;
-};
+export type SavedLocation = SavedLocationResponseDto;
 
-const SAVED_LOCATIONS_KEY = 'immich_saved_locations';
+/**
+ * Where saved locations lived before they moved to the server. Read once, by `importLegacy`, and
+ * cleared only after the server has taken them in.
+ */
+export const SAVED_LOCATIONS_KEY = 'immich_saved_locations';
 
-function loadSavedLocations(): SavedLocation[] {
-  if (typeof localStorage === 'undefined') return [];
+/**
+ * Whatever the browser still holds under the old key. Storage can be missing (SSR), blocked
+ * (private windows, site data cleared) or hold junk; every one of those reads as nothing to import.
+ */
+function readLegacySavedLocations(): SavedLocationCreateDto[] {
   try {
     const stored = localStorage.getItem(SAVED_LOCATIONS_KEY);
-    return stored ? (JSON.parse(stored) as SavedLocation[]) : [];
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed)
+      ? (parsed as SavedLocationCreateDto[]).filter(
+          (entry) =>
+            typeof entry?.name === 'string' &&
+            typeof entry.latitude === 'number' &&
+            typeof entry.longitude === 'number',
+        )
+      : [];
   } catch {
     return [];
   }
 }
 
-function createSavedLocationsStore() {
-  const { subscribe, update } = writable<SavedLocation[]>(loadSavedLocations());
+function clearLegacySavedLocations() {
+  try {
+    localStorage.removeItem(SAVED_LOCATIONS_KEY);
+  } catch {
+    // A key that cannot be removed is sent again next time; the bulk import skips what it already has.
+  }
+}
 
-  function persist(locations: SavedLocation[]) {
+/** The server's own order, so a location added or renamed here lands where a reload would put it. */
+const byName = (a: SavedLocation, b: SavedLocation) =>
+  a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.createdAt.localeCompare(b.createdAt);
+
+/**
+ * The user's saved locations, held on the server. The list starts empty and fills when `load` is
+ * called (the location picker does this on open, without waiting on it), so nothing here blocks a
+ * render. Mutations go to the server first and touch the list only once it has answered, so the
+ * list never shows something the server refused; callers catch and report the error.
+ */
+function createSavedLocationsStore() {
+  const { subscribe, set, update } = writable<SavedLocation[]>([]);
+
+  /**
+   * The one-off move out of browser storage. The bulk import answers with the full list, so a
+   * successful import doubles as the load. The old key is cleared only after the server has the
+   * entries; on failure it is kept for the next open, which the import's idempotency makes safe.
+   * Returns false when there was nothing to import or the import failed, leaving the load to
+   * `getSavedLocations`.
+   */
+  async function importLegacy(): Promise<boolean> {
+    const locations = readLegacySavedLocations();
+    if (locations.length === 0) {
+      return false;
+    }
+
     try {
-      localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(locations));
+      set(await createSavedLocations({ savedLocationsBulkCreateDto: { locations } }));
     } catch {
-      // ignore storage errors
+      return false;
+    }
+
+    clearLegacySavedLocations();
+    return true;
+  }
+
+  async function load() {
+    if (!(await importLegacy())) {
+      set(await getSavedLocations());
     }
   }
 
-  function add(location: SavedLocation) {
-    update((locations) => {
-      const filtered = locations.filter(
-        (l) => l.latitude !== location.latitude || l.longitude !== location.longitude,
-      );
-      const next = [location, ...filtered];
-      persist(next);
-      return next;
-    });
+  async function add(location: SavedLocationCreateDto) {
+    const created = await createSavedLocation({ savedLocationCreateDto: location });
+    update((locations) => [...locations, created].sort(byName));
+    return created;
   }
 
-  function remove(index: number) {
-    update((locations) => {
-      const next = locations.filter((_, i) => i !== index);
-      persist(next);
-      return next;
-    });
+  async function rename(id: string, name: string) {
+    const updated = await updateSavedLocation({ id, savedLocationUpdateDto: { name } });
+    update((locations) => locations.map((location) => (location.id === id ? updated : location)).sort(byName));
+    return updated;
   }
 
-  return { subscribe, add, remove };
+  async function remove(id: string) {
+    await deleteSavedLocation({ id });
+    update((locations) => locations.filter((location) => location.id !== id));
+  }
+
+  return { subscribe, load, add, rename, remove };
 }
 
 export const savedLocations = createSavedLocationsStore();

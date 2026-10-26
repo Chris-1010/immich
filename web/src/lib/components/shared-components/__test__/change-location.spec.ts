@@ -1,8 +1,15 @@
 import ChangeLocation from '$lib/components/shared-components/change-location.svelte';
-import { lastChosenLocation, savedLocations } from '$lib/stores/asset-editor.store';
+import { lastChosenLocation } from '$lib/stores/asset-editor.store';
+import { getSavedLocations, searchLocations } from '@immich/sdk';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { get } from 'svelte/store';
+
+vi.mock('@immich/sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@immich/sdk')>()),
+  getSavedLocations: vi.fn(),
+  searchLocations: vi.fn(),
+}));
 
 // The real map pulls in maplibre, which has no canvas to draw on here and is beside the point.
 vi.mock('$lib/components/shared-components/map/map.svelte', () => ({
@@ -13,6 +20,8 @@ describe('ChangeLocation', () => {
   beforeEach(() => {
     lastChosenLocation.set(null);
     localStorage.clear();
+    vi.mocked(getSavedLocations).mockResolvedValue([]);
+    vi.mocked(searchLocations).mockResolvedValue([]);
   });
 
   it('offers No Location for an asset', () => {
@@ -47,11 +56,20 @@ describe('ChangeLocation', () => {
   });
 
   it('names the point after the saved location it came from', async () => {
-    savedLocations.add({ name: 'Rathmines', latitude: 53.32, longitude: -6.26 });
+    vi.mocked(getSavedLocations).mockResolvedValue([
+      {
+        id: 'saved-1',
+        name: 'Rathmines',
+        latitude: 53.32,
+        longitude: -6.26,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
     const onClose = vi.fn();
     render(ChangeLocation, { pointOnly: true, onClose });
 
-    await userEvent.click(screen.getByText('Rathmines'));
+    await userEvent.click(await screen.findByText('Rathmines'));
     await userEvent.click(screen.getByText('confirm'));
 
     expect(onClose).toHaveBeenCalledWith({
@@ -59,6 +77,5 @@ describe('ChangeLocation', () => {
       point: { lat: 53.32, lng: -6.26 },
       name: 'Rathmines',
     });
-    savedLocations.remove(0);
   });
 });

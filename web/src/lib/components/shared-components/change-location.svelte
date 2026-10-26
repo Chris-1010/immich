@@ -27,6 +27,7 @@
   import { Button, HStack, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
   import { mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiTrashCanOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
 
   interface Props {
@@ -152,13 +153,31 @@
     showSaveInput = true;
   };
 
-  const handleSaveLocation = () => {
+  const handleSaveLocation = async () => {
     const name = saveNameInput.trim();
-    if (!name || !point) return;
-    savedLocations.add({ name, latitude: point.lat, longitude: point.lng });
-    showSaveInput = false;
-    saveNameInput = '';
+    if (!name || !point) {return;}
+    try {
+      await savedLocations.add({ name, latitude: point.lat, longitude: point.lng });
+      showSaveInput = false;
+      saveNameInput = '';
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_location'));
+    }
   };
+
+  const handleRemoveSavedLocation = async (id: string) => {
+    try {
+      await savedLocations.remove(id);
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_delete_saved_location'));
+    }
+  };
+
+  // Fill the saved list from the server (moving anything left in browser storage there first). The
+  // picker opens without waiting: the list appears when the answer arrives.
+  onMount(() => {
+    savedLocations.load().catch((error: unknown) => handleError(error, $t('errors.unable_to_load_saved_locations')));
+  });
 
   const onUpdate = (lat: number, lng: number) => {
     point = { lat, lng };
@@ -279,11 +298,9 @@
           {#if $savedLocations.length === 0}
             <p class="text-sm text-gray-400 dark:text-gray-500">{$t('no_saved_locations')}</p>
           {:else}
-            {#each $savedLocations
-              .map((loc, i) => ({ loc, i }))
-              .filter(({ loc }) => loc.name
-                  .toLowerCase()
-                  .includes(savedFilter.toLowerCase())) as { loc, i } (loc.latitude + loc.longitude + loc.name)}
+            {#each $savedLocations.filter((loc) => loc.name
+                .toLowerCase()
+                .includes(savedFilter.toLowerCase())) as loc (loc.id)}
               <div class="flex items-center gap-1">
                 <button
                   type="button"
@@ -297,7 +314,7 @@
                   size="small"
                   color="secondary"
                   aria-label={$t('delete')}
-                  onclick={() => savedLocations.remove(i)}
+                  onclick={() => handleRemoveSavedLocation(loc.id)}
                 />
               </div>
             {/each}
