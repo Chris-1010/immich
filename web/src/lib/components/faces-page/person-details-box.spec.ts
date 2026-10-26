@@ -1,5 +1,5 @@
 import PersonDetailsBox from '$lib/components/faces-page/person-details-box.svelte';
-import type { AlongWithPersonResponseDto, PersonDetailResponseDto } from '@immich/sdk';
+import { PersonDetailKind, type AlongWithPersonResponseDto, type PersonDetailResponseDto } from '@immich/sdk';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
@@ -110,5 +110,47 @@ describe('PersonDetailsBox', () => {
     render(PersonDetailsBox, { details: [detail('a', 'Intel', { alongWith })], onEdit: vi.fn() });
 
     expect(screen.queryByRole('button', { name: /along_with/ })).not.toBeInTheDocument();
+  });
+
+  describe('contact fields', () => {
+    it('offers the empty-state button when the only detail is a Current contact field', () => {
+      render(PersonDetailsBox, {
+        details: [detail('h', 'Rathmines', { kind: PersonDetailKind.Home, key: 'Home' })],
+        onEdit: vi.fn(),
+      });
+
+      expect(screen.getByText('add_details')).toBeInTheDocument();
+      expect(screen.queryByText('Rathmines')).not.toBeInTheDocument();
+    });
+
+    it('leaves Current contact fields out of Current and keeps Past ones under Past', async () => {
+      const user = userEvent.setup();
+      render(PersonDetailsBox, {
+        details: [
+          detail('a', 'Intel'),
+          detail('h', 'Rathmines', { kind: PersonDetailKind.Home, key: 'Home' }),
+          detail('h0', 'Galway', { kind: PersonDetailKind.Home, key: 'Home', until: '2015-01-01' }),
+        ],
+        onEdit: vi.fn(),
+      });
+
+      expect(screen.getByText('Intel')).toBeInTheDocument();
+      expect(screen.queryByText('Rathmines')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: 'details_past' }));
+
+      expect(screen.getByText('Galway')).toBeInTheDocument();
+    });
+
+    it('shows the Past toggle for a person whose only free-text history is a contact field', () => {
+      render(PersonDetailsBox, {
+        details: [detail('h0', 'Galway', { kind: PersonDetailKind.Home, key: 'Home', until: '2015-01-01' })],
+        onEdit: vi.fn(),
+      });
+
+      expect(screen.queryByText('add_details')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'details_past' })).toBeInTheDocument();
+      expect(screen.getByText('details_none_current')).toBeInTheDocument();
+    });
   });
 });

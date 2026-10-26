@@ -3,6 +3,7 @@
   import DetailDateInput from '$lib/components/faces-page/detail-date-input.svelte';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { isFreeTextDetail } from '$lib/utils/contact-fields';
   import { sortPastDetails } from '$lib/utils/person-detail-dates';
   import {
     PersonDetailDatePrecision,
@@ -62,8 +63,15 @@
    * Current, and an undefined one would be taken for Past by everything that sorts the two apart.
    */
   type Dates = Pick<PersonDetailResponseDto, 'since' | 'sincePrecision' | 'until' | 'untilPrecision'>;
+  /**
+   * The contact-field kind and pin, carried through untouched for the same reason as the dates: a
+   * Home sent back without its kind would come back as a free-text detail, and without its pin
+   * would drop off the location picker.
+   */
+  type Contact = Pick<PersonDetailResponseDto, 'kind' | 'latitude' | 'longitude'>;
   type Row = Field &
-    Dates & {
+    Dates &
+    Contact & {
       subdetails: Field[];
       /** What the row held when the modal opened, which is what a changed value is measured against. */
       original?: { key: string; value: string };
@@ -105,13 +113,23 @@
     sincePrecision: detail?.sincePrecision ?? null,
     until: detail?.until ?? null,
     untilPrecision: detail?.untilPrecision ?? null,
+    kind: detail?.kind ?? null,
+    latitude: detail?.latitude ?? null,
+    longitude: detail?.longitude ?? null,
     original: detail && { key: detail.key, value: detail.value },
     archive: true,
   });
 
+  /**
+   * Whether there is any free-text detail to edit, Current or Past. Contact fields do not count:
+   * they are edited from their chips, so a person holding only a Home has nothing here yet.
+   */
+  const hasFreeText = details.some((detail) => isFreeTextDetail(detail));
+
   // A person with nothing recorded opens on an empty row rather than on a bare "+ Add detail":
   // pressing "Add details" already said what was wanted, and asking for it twice is a dead end.
-  let rows = $state<Row[]>(details.length > 0 ? details.map((detail) => asRow(detail)) : [asRow()]);
+  // Contact fields still go in `rows`, hidden or not, since the save replaces the whole list.
+  let rows = $state<Row[]>([...details.map((detail) => asRow(detail)), ...(hasFreeText ? [] : [asRow()])]);
 
   /**
    * Which half of the list is on show, as in the person's header. There is only Current until
@@ -119,8 +137,12 @@
    */
   let tab = $state<'current' | 'past'>('current');
 
-  /** In the order they were arranged in, which is the order they are saved in. */
-  const currentRows = $derived(rows.filter((row) => row.until === null));
+  /**
+   * In the order they were arranged in, which is the order they are saved in. Current contact
+   * fields are left out, as in the header box: their chips are where they are edited. Past keeps
+   * them, since an ended Home is history like any other.
+   */
+  const currentRows = $derived(rows.filter((row) => row.until === null && isFreeTextDetail(row)));
   /** Most recently ended first. Their manual order means nothing once they are history. */
   const pastRows = $derived(sortPastDetails(rows));
 
@@ -170,8 +192,8 @@
   // Nothing recorded yet means the row waiting on open is the only thing to type in, so put the
   // caret there instead of making it the first thing to click.
   onMount(() => {
-    if (details.length === 0) {
-      keyInputs[rows[0].rowId]?.focus();
+    if (!hasFreeText) {
+      keyInputs[rows.at(-1)!.rowId]?.focus();
     }
   });
 
@@ -542,6 +564,9 @@
       .flatMap((row) => {
         const fields = asFields(row);
         const dates = {
+          kind: row.kind,
+          latitude: row.latitude,
+          longitude: row.longitude,
           since: row.since,
           sincePrecision: row.sincePrecision,
           until: row.until,
@@ -557,6 +582,11 @@
             ...fields,
             id: undefined,
             subdetails: [],
+            // Only free-text rows are ever edited here, but the kind is kept all the same; a pin
+            // marked the old place, so it stays on the old row.
+            kind: row.kind,
+            latitude: null,
+            longitude: null,
             since: null,
             sincePrecision: null,
             until: null,

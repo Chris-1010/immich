@@ -4,6 +4,7 @@
   import { AppRoute } from '$lib/constants';
   import { locale } from '$lib/stores/preferences.store';
   import { getPeopleThumbnailUrl } from '$lib/utils';
+  import { isFreeTextDetail } from '$lib/utils/contact-fields';
   import { getDetailSubtitle, isCurrentDetail, sortPastDetails } from '$lib/utils/person-detail-dates';
   import { genderRingClass } from '$lib/utils/person-gender';
   import type { AlongWithPersonResponseDto, PersonDetailResponseDto, RelationshipGender } from '@immich/sdk';
@@ -36,8 +37,12 @@
    */
   let tab = $state<'current' | 'past'>('current');
 
-  /** In the order they were arranged in, which is the order the server sends them. */
-  const currentDetails = $derived(details.filter((detail) => isCurrentDetail(detail)));
+  /**
+   * In the order they were arranged in, which is the order the server sends them. Contact fields
+   * are left out: a Current Home or Email already has its chip under the name. Once ended they are
+   * history like anything else, so Past keeps them.
+   */
+  const currentDetails = $derived(details.filter((detail) => isCurrentDetail(detail) && isFreeTextDetail(detail)));
   const pastDetails = $derived(sortPastDetails(details));
 
   // Guarded here as well as reset below, so the frame between the last Past row going and the
@@ -295,7 +300,9 @@
   });
 </script>
 
-{#if details.length === 0}
+<!-- Nothing to list rather than nothing recorded: a person holding only a Current Home has no
+     free-text detail and no history, so the box has no rows to show and offers to add some. -->
+{#if currentDetails.length === 0 && pastDetails.length === 0}
   <button
     type="button"
     class="flex place-items-center gap-1 p-4 sm:px-6 text-sm text-gray-500 dark:text-gray-400 hover:text-primary"

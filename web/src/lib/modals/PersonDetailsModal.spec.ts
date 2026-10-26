@@ -5,6 +5,7 @@ import {
   getPersonDetailKeys,
   getPersonDetailValues,
   PersonDetailDatePrecision,
+  PersonDetailKind,
   updatePersonDetails,
   type PersonResponseDto,
 } from '@immich/sdk';
@@ -39,6 +40,9 @@ const detail = (
   sincePrecision: null,
   until: null,
   untilPrecision: null,
+  kind: null as PersonDetailKind | null,
+  latitude: null as number | null,
+  longitude: null as number | null,
   alongWith: { current: { total: 0, people: [] }, past: { total: 0, people: [] } },
 });
 
@@ -221,6 +225,7 @@ describe('PersonDetailsModal', () => {
   describe('Current and Past', () => {
     const thisMonth = () => DateTime.now().startOf('month').toISODate();
     const undated = { since: null, sincePrecision: null, until: null, untilPrecision: null };
+    const plain = { kind: null, latitude: null, longitude: null };
 
     const saved = () => vi.mocked(updatePersonDetails).mock.calls[0][0].personDetailsUpdateDto.details;
 
@@ -244,8 +249,9 @@ describe('PersonDetailsModal', () => {
 
       await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
       expect(saved()).toEqual([
-        { id: undefined, key: 'Works at', value: 'Google', subdetails: [], ...undated },
+        { id: undefined, key: 'Works at', value: 'Google', subdetails: [], ...plain, ...undated },
         {
+          ...plain,
           id: 'detail-1',
           key: 'Works at',
           value: 'Intel',
@@ -272,7 +278,9 @@ describe('PersonDetailsModal', () => {
       await userEvent.click(screen.getByText('save'));
 
       await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
-      expect(saved()).toEqual([{ id: 'detail-1', key: 'Works at', value: 'Google', subdetails: [], ...undated }]);
+      expect(saved()).toEqual([
+        { id: 'detail-1', key: 'Works at', value: 'Google', subdetails: [], ...plain, ...undated },
+      ]);
     });
 
     it('offers nothing for a changed key, or once the value is put back', async () => {
@@ -383,6 +391,54 @@ describe('PersonDetailsModal', () => {
 
       expect(screen.getByText('detail_until_before_since')).toBeDefined();
       expect((screen.getByText('save') as HTMLButtonElement).closest('button')!.disabled).toBe(true);
+    });
+  });
+
+  describe('contact fields', () => {
+    const home = {
+      ...detail('home-1', 'Home', 'Rathmines'),
+      kind: PersonDetailKind.Home,
+      latitude: 53.3,
+      longitude: -6.2,
+    };
+    const oldHome = { ...detail('home-0', 'Home', 'Galway'), kind: PersonDetailKind.Home, until: '2015-01-01' };
+
+    it('leaves a Current contact field out of Current and opens on a blank row instead', () => {
+      render(PersonDetailsModal, { personId: 'person-1', details: [home], onClose: vi.fn() });
+
+      expect(screen.queryByDisplayValue('Rathmines')).toBeNull();
+      expect(screen.getAllByPlaceholderText('detail_key')).toHaveLength(1);
+      expect(screen.getByPlaceholderText('detail_key')).toHaveValue('');
+    });
+
+    it('shows a Past contact field under Past', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Hometown', 'Cork'), oldHome],
+        onClose: vi.fn(),
+      });
+
+      expect(screen.queryByDisplayValue('Galway')).toBeNull();
+      await userEvent.click(screen.getByRole('tab', { name: 'details_past' }));
+      expect(screen.getByDisplayValue('Galway')).toBeDefined();
+    });
+
+    it('sends hidden contact fields back with their kind and pin', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Hometown', 'Cork'), home, oldHome],
+        onClose: vi.fn(),
+      });
+
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+      const sent = vi.mocked(updatePersonDetails).mock.calls[0][0].personDetailsUpdateDto.details;
+      expect(sent).toEqual([
+        expect.objectContaining({ id: 'detail-1', kind: null }),
+        expect.objectContaining({ id: 'home-1', kind: 'home', latitude: 53.3, longitude: -6.2, until: null }),
+        expect.objectContaining({ id: 'home-0', kind: 'home', until: '2015-01-01' }),
+      ]);
     });
   });
 });
