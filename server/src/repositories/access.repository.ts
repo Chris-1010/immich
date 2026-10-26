@@ -305,6 +305,26 @@ class NotificationAccess {
   }
 }
 
+class SavedLocationAccess {
+  constructor(private db: Kysely<DB>) {}
+
+  @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
+  @ChunkedSet({ paramIndex: 1 })
+  async checkOwnerAccess(userId: string, savedLocationIds: Set<string>) {
+    if (savedLocationIds.size === 0) {
+      return new Set<string>();
+    }
+
+    return this.db
+      .selectFrom('saved_location')
+      .select('saved_location.id')
+      .where('saved_location.id', 'in', [...savedLocationIds])
+      .where('saved_location.ownerId', '=', userId)
+      .execute()
+      .then((locations) => new Set(locations.map((location) => location.id)));
+  }
+}
+
 class SessionAccess {
   constructor(private db: Kysely<DB>) {}
 
@@ -534,6 +554,7 @@ export class AccessRepository {
   partner: PartnerAccess;
   relationship: RelationshipAccess;
   relationshipType: RelationshipTypeAccess;
+  savedLocation: SavedLocationAccess;
   session: SessionAccess;
   stack: StackAccess;
   tag: TagAccess;
@@ -551,6 +572,7 @@ export class AccessRepository {
     this.partner = new PartnerAccess(db);
     this.relationship = new RelationshipAccess(db);
     this.relationshipType = new RelationshipTypeAccess(db);
+    this.savedLocation = new SavedLocationAccess(db);
     this.session = new SessionAccess(db);
     this.stack = new StackAccess(db);
     this.tag = new TagAccess(db);

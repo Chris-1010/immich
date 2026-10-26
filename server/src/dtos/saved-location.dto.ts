@@ -12,6 +12,8 @@ import {
 } from 'class-validator';
 import { PlacesResponseDto } from 'src/dtos/search.dto';
 import { LocationSearchResultType, PersonDetailDatePrecision, PersonDetailKind } from 'src/enum';
+import { PersonPlace, SavedLocation } from 'src/repositories/saved-location.repository';
+import { asDateString } from 'src/utils/date';
 import { Optional, ValidateEnum } from 'src/validation';
 
 /** Long enough for an address typed out in full, short enough to stay a label. */
@@ -158,3 +160,30 @@ export class LocationSearchResultDto {
   person?: PersonPlaceResponseDto;
   place?: PlacesResponseDto;
 }
+
+export const mapSavedLocation = (location: SavedLocation): SavedLocationResponseDto => ({
+  id: location.id,
+  name: location.name,
+  latitude: location.latitude,
+  longitude: location.longitude,
+  createdAt: location.createdAt,
+  updatedAt: location.updatedAt,
+});
+
+export const mapPersonPlace = (place: PersonPlace): PersonPlaceResponseDto => ({
+  detailId: place.detailId,
+  personId: place.personId,
+  personName: place.personName,
+  personUpdatedAt: place.personUpdatedAt,
+  personIsHidden: place.personIsHidden,
+  kind: place.kind,
+  key: place.key,
+  value: place.value,
+  latitude: place.latitude,
+  longitude: place.longitude,
+  since: asDateString(place.since),
+  sincePrecision: place.sincePrecision,
+  until: asDateString(place.until),
+  untilPrecision: place.untilPrecision,
+  isCurrent: place.until === null,
+});

@@ -58,6 +58,10 @@ export const newAccessRepositoryMock = (): IAccessRepositoryMock => {
       checkOwnerAccess: vitest.fn().mockResolvedValue(new Set()),
     },
 
+    savedLocation: {
+      checkOwnerAccess: vitest.fn().mockResolvedValue(new Set()),
+    },
+
     session: {
       checkOwnerAccess: vitest.fn().mockResolvedValue(new Set()),
     },
