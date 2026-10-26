@@ -32,7 +32,11 @@ const detail = (
   sortOrder: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
   subdetails: subdetails.map((sub, index) => ({ ...sub, sortOrder: index })),
-  alongWith: { total: 0, people: [] },
+  since: null,
+  sincePrecision: null,
+  until: null,
+  untilPrecision: null,
+  alongWith: { current: { total: 0, people: [] }, past: { total: 0, people: [] } },
 });
 
 const person = (id: string, name: string) => ({ id, name }) as PersonResponseDto;

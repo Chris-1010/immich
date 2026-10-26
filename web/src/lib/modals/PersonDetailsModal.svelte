@@ -52,7 +52,12 @@
 
   /** One editable line, at either level. `id` is absent on something that does not exist yet. */
   type Field = { rowId: string; id?: string; key: string; value: string };
-  type Row = Field & { subdetails: Field[] };
+  /**
+   * Since and Until, carried through untouched. The whole list is saved at once, so a row sent back
+   * without them would come back Current and undated.
+   */
+  type Dates = Pick<PersonDetailResponseDto, 'since' | 'sincePrecision' | 'until' | 'untilPrecision'>;
+  type Row = Field & { subdetails: Field[]; dates?: Dates };
 
   /**
    * The key input of each line, so a line added by a button can be focused.
@@ -80,6 +85,12 @@
   const asRow = (detail?: PersonDetailResponseDto): Row => ({
     ...asField(detail),
     subdetails: (detail?.subdetails ?? []).map((sub) => asField(sub)),
+    dates: detail && {
+      since: detail.since,
+      sincePrecision: detail.sincePrecision,
+      until: detail.until,
+      untilPrecision: detail.untilPrecision,
+    },
   });
 
   // A person with nothing recorded opens on an empty row rather than on a bare "+ Add detail":
@@ -423,7 +434,8 @@
    */
   const asPayload = () =>
     rows
-      .map(({ id, key, value, subdetails }) => ({
+      .map(({ id, key, value, subdetails, dates }) => ({
+        ...dates,
         id,
         key: key.trim(),
         value: value.trim(),
