@@ -20,12 +20,26 @@
   import type Map from '$lib/components/shared-components/map/map.svelte';
   import { timeDebounceOnSearch, timeToLoadTheMap } from '$lib/constants';
   import SearchBar from '$lib/elements/SearchBar.svelte';
+  import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
   import { lastChosenLocation, savedLocations } from '$lib/stores/asset-editor.store';
+  import { locale } from '$lib/stores/preferences.store';
+  import { getPeopleThumbnailUrl } from '$lib/utils';
   import { delay } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
-  import { searchPlaces, type AssetResponseDto, type PlacesResponseDto } from '@immich/sdk';
-  import { Button, HStack, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
-  import { mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiTrashCanOutline } from '@mdi/js';
+  import { formatDetailDate } from '$lib/utils/person-detail-dates';
+  import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
+  import {
+    LocationSearchResultType,
+    PersonDetailKind,
+    searchLocations,
+    type AssetResponseDto,
+    type LocationSearchResultDto,
+    type PersonPlaceResponseDto,
+    type PlacesResponseDto,
+    type RelationshipGender,
+  } from '@immich/sdk';
+  import { Button, HStack, Icon, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
+  import { mdiBookmarkOutline, mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiTrashCanOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
@@ -44,13 +58,24 @@
 
   let { asset = undefined, point: initialPoint, pointOnly = false, onClose }: Props = $props();
 
-  let places: PlacesResponseDto[] = $state([]);
-  let suggestedPlaces: PlacesResponseDto[] = $derived(places.slice(0, 5));
+  // One list for saved locations, people's places and GeoNames places, in the order the server ranks
+  // them. Before anything is typed it offers the saved locations and people's current places, so the
+  // list is worth opening on its own; the saved part comes from the store, which stays current when
+  // a location is saved or deleted here, and the people's places from the empty-query search.
   let searchWord: string = $state('');
+  let results: LocationSearchResultDto[] = $state([]);
+  let currentPeoplesPlaces: LocationSearchResultDto[] = $state([]);
+  let suggestions: LocationSearchResultDto[] = $derived(
+    searchWord === ''
+      ? [...$savedLocations.map((saved) => ({ type: LocationSearchResultType.Saved, saved })), ...currentPeoplesPlaces]
+      : results,
+  );
   let latestSearchTimeout: number;
   let showLoadingSpinner = $state(false);
   let suggestionContainer: HTMLDivElement | undefined = $state();
-  let hideSuggestion = $state(false);
+  // Hidden until the search bar is clicked, so the before-typing list does not cover the map on open.
+  let hideSuggestion = $state(true);
+  let genders: Record<string, RelationshipGender> = $state({});
   let mapElement = $state<ReturnType<typeof Map>>();
 
   let previousLocation = get(lastChosenLocation);
@@ -66,12 +91,6 @@
   $effect(() => {
     if (mapElement && initialPoint) {
       mapElement.addClipMapMarker(initialPoint.lng, initialPoint.lat);
-    }
-  });
-
-  $effect(() => {
-    if (searchWord === '') {
-      suggestedPlaces = [];
     }
   });
 
@@ -104,7 +123,55 @@
     return `${name}${admin1Name ? ', ' + admin1Name : ''}${admin2Name ? ', ' + admin2Name : ''}`;
   };
 
+  const personName = (person: PersonPlaceResponseDto) => person.personName || $t('person');
+
+  /**
+   * "Ethan's Home" for a current place, and "Ethan's former home · 2015 – 2021" (or "· until 2021"
+   * when the start was never recorded) for a past one, which says when instead of where: the value
+   * is what the current row adds, and a past one is told apart by its dates.
+   */
+  const personPlaceLabel = (person: PersonPlaceResponseDto) => {
+    const name = personName(person);
+    const isWork = person.kind === PersonDetailKind.Work;
+
+    if (person.isCurrent) {
+      return `${$t(isWork ? 'person_place_work' : 'person_place_home', { values: { name } })} · ${person.value}`;
+    }
+
+    const former = $t(isWork ? 'person_place_former_work' : 'person_place_former_home', { values: { name } });
+    const until = formatDetailDate(person.until ?? '', person.untilPrecision, $locale);
+    const range = person.since
+      ? $t('detail_range', {
+          values: { since: formatDetailDate(person.since, person.sincePrecision, $locale), until },
+        })
+      : $t('person_place_until', { values: { date: until } });
+
+    return `${former} · ${range}`;
+  };
+
+  const suggestionKey = (result: LocationSearchResultDto) =>
+    result.saved?.id ??
+    result.person?.detailId ??
+    `${result.type}:${result.place?.latitude}:${result.place?.longitude}:${result.place?.name}`;
+
+  /**
+   * Picking a row sets the point and carries the name it should be known by, the same way for every
+   * row type: the saved location's name, the person's place as typed (e.g. "Rathmines"), or the
+   * place's "Name, Admin1, Admin2".
+   */
+  const handleUseSuggestion = (result: LocationSearchResultDto) => {
+    if (result.saved) {
+      handleUseSuggested(result.saved.latitude, result.saved.longitude, undefined, result.saved.name);
+    } else if (result.person) {
+      handleUseSuggested(result.person.latitude, result.person.longitude, undefined, result.person.value);
+    } else if (result.place) {
+      handleUseSuggested(result.place.latitude, result.place.longitude, result.place);
+    }
+  };
+
   const handleSearchPlaces = () => {
+    // Typing reopens the list, including after keyboard focus that never clicked the bar.
+    hideSuggestion = false;
     if (latestSearchTimeout) {
       clearTimeout(latestSearchTimeout);
     }
@@ -113,21 +180,21 @@
     // eslint-disable-next-line unicorn/prefer-global-this
     const searchTimeout = window.setTimeout(() => {
       if (searchWord === '') {
-        places = [];
+        results = [];
         showLoadingSpinner = false;
         return;
       }
 
-      searchPlaces({ name: searchWord })
+      searchLocations({ query: searchWord })
         .then((searchResult) => {
           if (latestSearchTimeout === searchTimeout) {
-            places = searchResult;
+            results = searchResult;
             showLoadingSpinner = false;
           }
         })
         .catch((error) => {
           if (latestSearchTimeout === searchTimeout) {
-            places = [];
+            results = [];
             handleError(error, $t('errors.cant_search_places'));
             showLoadingSpinner = false;
           }
@@ -155,7 +222,9 @@
 
   const handleSaveLocation = async () => {
     const name = saveNameInput.trim();
-    if (!name || !point) {return;}
+    if (!name || !point) {
+      return;
+    }
     try {
       await savedLocations.add({ name, latitude: point.lat, longitude: point.lng });
       showSaveInput = false;
@@ -175,8 +244,20 @@
 
   // Fill the saved list from the server (moving anything left in browser storage there first). The
   // picker opens without waiting: the list appears when the answer arrives.
+  //
+  // The people's current places for the before-typing list, and the gender rings on their faces, load
+  // alongside. Neither is worth an error: without them the list simply starts with less, and the
+  // faces go unringed, which already means "unknown".
   onMount(() => {
     savedLocations.load().catch((error: unknown) => handleError(error, $t('errors.unable_to_load_saved_locations')));
+    searchLocations({})
+      .then(
+        (defaults) => (currentPeoplesPlaces = defaults.filter(({ type }) => type === LocationSearchResultType.Person)),
+      )
+      .catch(() => {});
+    loadPersonGenders()
+      .then((loaded) => (genders = loaded))
+      .catch(() => {});
   });
 
   const onUpdate = (lat: number, lng: number) => {
@@ -202,33 +283,52 @@
                   placeholder={$t('search_places')}
                   bind:name={searchWord}
                   {showLoadingSpinner}
-                  onReset={() => (suggestedPlaces = [])}
+                  onReset={() => (results = [])}
                   onSearch={handleSearchPlaces}
-                  roundedBottom={suggestedPlaces.length === 0 || hideSuggestion}
+                  roundedBottom={suggestions.length === 0 || hideSuggestion}
                 />
               </button>
             </div>
           {/if}
 
           <div
-            class="absolute w-full"
+            class="absolute max-h-96 w-full overflow-y-auto rounded-b-lg"
             id="suggestion"
             bind:this={suggestionContainer}
             use:clickOutside={{ onOutclick: () => (hideSuggestion = true) }}
           >
             {#if !hideSuggestion}
-              {#each suggestedPlaces as place, index (place.latitude + place.longitude)}
+              {#each suggestions as result, index (suggestionKey(result))}
                 <button
                   type="button"
-                  class="flex w-full border-t border-gray-400 dark:border-immich-dark-gray h-14 place-items-center bg-gray-200 p-2 dark:bg-gray-700 hover:bg-gray-300 hover:dark:bg-[#232932] focus:bg-gray-300 focus:dark:bg-[#232932] {index ===
-                  suggestedPlaces.length - 1
+                  class="flex w-full border-t border-gray-400 dark:border-immich-dark-gray h-14 place-items-center gap-3 bg-gray-200 p-2 dark:bg-gray-700 hover:bg-gray-300 hover:dark:bg-[#232932] focus:bg-gray-300 focus:dark:bg-[#232932] {index ===
+                  suggestions.length - 1
                     ? 'rounded-b-lg border-b'
                     : ''}"
-                  onclick={() => handleUseSuggested(place.latitude, place.longitude, place)}
+                  onclick={() => handleUseSuggestion(result)}
                 >
-                  <p class="ms-4 text-sm text-gray-700 dark:text-gray-100 truncate">
-                    {getLocation(place.name, place.admin1name, place.admin2name)}
-                  </p>
+                  {#if result.saved}
+                    <Icon icon={mdiBookmarkOutline} size="1.25em" class="ms-2 shrink-0 text-primary" aria-hidden />
+                    <p class="text-sm text-gray-700 dark:text-gray-100 truncate">{result.saved.name}</p>
+                  {:else if result.person}
+                    {@const person = result.person}
+                    <ImageThumbnail
+                      circle
+                      shadow
+                      url={getPeopleThumbnailUrl({ id: person.personId, updatedAt: person.personUpdatedAt })}
+                      altText={personName(person)}
+                      widthStyle="2rem"
+                      heightStyle="2rem"
+                      class="ms-1 shrink-0 {genderRingClass(genders[person.personId])}"
+                    />
+                    <p class="text-sm text-gray-700 dark:text-gray-100 truncate" title={person.value}>
+                      {personPlaceLabel(person)}
+                    </p>
+                  {:else if result.place}
+                    <p class="ms-4 text-sm text-gray-700 dark:text-gray-100 truncate">
+                      {getLocation(result.place.name, result.place.admin1name, result.place.admin2name)}
+                    </p>
+                  {/if}
                 </button>
               {/each}
             {/if}
