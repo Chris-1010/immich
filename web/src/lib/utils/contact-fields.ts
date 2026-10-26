@@ -107,6 +107,9 @@ export type ContactFieldRow = {
   archive: boolean;
 };
 
+/** Where a pin was put, and the name of whatever was picked to put it there, when there was one. */
+export type ContactFieldPin = { latitude: number; longitude: number; name?: string };
+
 /**
  * A saved Current row whose value now says something else. Only then is keeping the old one
  * offered, and putting the value back the way it was withdraws the offer.

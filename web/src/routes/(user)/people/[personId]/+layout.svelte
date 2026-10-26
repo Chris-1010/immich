@@ -10,6 +10,7 @@
   import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
   import PersonDetailsBox from '$lib/components/faces-page/person-details-box.svelte';
   import { AppRoute, PersonPageViewMode, QueryParameter, SessionStorageKey } from '$lib/constants';
+  import ContactFieldModal from '$lib/modals/ContactFieldModal.svelte';
   import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
   import PersonEditBirthDateModal from '$lib/modals/PersonEditBirthDateModal.svelte';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
@@ -131,8 +132,11 @@
   };
 
   /** A chip's way into its editor. Each kind is edited on its own, apart from the free-text list. */
-  const handleEditContactField = async (_: PersonDetailKind) => {
-    await handleEditDetails();
+  const handleEditContactField = async (kind: PersonDetailKind) => {
+    const saved = await modalManager.show(ContactFieldModal, { personId: person.id, kind, details });
+    if (saved) {
+      details = saved;
+    }
   };
 
   /**
