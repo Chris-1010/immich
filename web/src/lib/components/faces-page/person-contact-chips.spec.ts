@@ -1,7 +1,7 @@
 import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
 import { copyToClipboard } from '$lib/utils';
 import { PersonDetailKind, type PersonDetailResponseDto, type PersonResponseDto } from '@immich/sdk';
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('$lib/utils', async (importOriginal) => ({
@@ -102,6 +102,28 @@ describe('PersonContactChips', () => {
     expect(screen.getByText('Rathmines')).toBeInTheDocument();
     expect(screen.queryByText('Galway')).not.toBeInTheDocument();
     expect(screen.getByText('+1')).toBeInTheDocument();
+  });
+
+  it('badges a chip whose shown value is pinned, and each pinned value in its popover', async () => {
+    const user = userEvent.setup();
+    render(
+      PersonContactChips,
+      props([
+        detail('h1', PersonDetailKind.Home, 'Rathmines', { latitude: 53.32, longitude: -6.26 }),
+        detail('h2', PersonDetailKind.Home, 'Galway'),
+        detail('w', PersonDetailKind.Work, 'Intel'),
+      ]),
+    );
+
+    const home = screen.getByRole('button', { name: 'contact_field_home: Rathmines' });
+    const work = screen.getByRole('button', { name: 'contact_field_work: Intel' });
+    expect(home.querySelector('[title="contact_field_pinned"]')).toBeInTheDocument();
+    expect(work.querySelector('[title="contact_field_pinned"]')).not.toBeInTheDocument();
+
+    await user.click(home);
+
+    const dialog = screen.getByRole('dialog', { name: 'contact_field_home' });
+    expect(within(dialog).getAllByRole('img', { name: 'contact_field_pinned' })).toHaveLength(1);
   });
 
   it('treats a kind with only Past values as empty', () => {

@@ -30,6 +30,7 @@
     mdiEmailOutline,
     mdiHome,
     mdiHomeOutline,
+    mdiMapMarker,
     mdiPencilOutline,
     mdiPhone,
     mdiPhoneOutline,
@@ -64,6 +65,9 @@
     [PersonDetailKind.Email]: { set: mdiEmail, unset: mdiEmailOutline },
     [PersonDetailKind.Phone]: { set: mdiPhone, unset: mdiPhoneOutline },
   };
+
+  /** A value carries a pin when it has a point on the map; only a Home or Work can have one. */
+  const isPinned = ({ latitude, longitude }: PersonDetailResponseDto) => latitude != null && longitude != null;
 
   const chips = $derived(CONTACT_KINDS.map((kind) => ({ kind, values: currentOfKind(details, kind) })));
 
@@ -207,6 +211,11 @@
         {#if first && !isIconOnlyKind(kind)}
           <span class="truncate text-primary">{first.value}</span>
         {/if}
+        {#if first && isPinned(first)}
+          <span class="shrink-0 text-gray-400 dark:text-gray-500" title={$t('contact_field_pinned')}>
+            <Icon icon={mdiMapMarker} size="0.875em" aria-hidden />
+          </span>
+        {/if}
         {#if values.length > 1}
           <span class="shrink-0 text-xs">+{values.length - 1}</span>
         {/if}
@@ -235,6 +244,16 @@
         <li class="flex flex-col gap-0.5 px-2">
           <div class="flex place-items-center gap-2">
             <span class="grow break-all text-sm text-primary">{detail.value}</span>
+            {#if isPinned(detail)}
+              <span
+                role="img"
+                class="shrink-0 text-gray-400 dark:text-gray-500"
+                title={$t('contact_field_pinned')}
+                aria-label={$t('contact_field_pinned')}
+              >
+                <Icon icon={mdiMapMarker} size="0.875em" aria-hidden />
+              </span>
+            {/if}
             {#if isIconOnlyKind(kind)}
               <button
                 type="button"
