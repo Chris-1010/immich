@@ -15,6 +15,7 @@
 
 <script lang="ts">
   import { clickOutside } from '$lib/actions/click-outside';
+  import { initInput } from '$lib/actions/focus';
   import { listNavigation } from '$lib/actions/list-navigation';
   import CoordinatesInput from '$lib/components/shared-components/coordinates-input.svelte';
   import type Map from '$lib/components/shared-components/map/map.svelte';
@@ -43,8 +44,11 @@
     mdiBookmarkOutline,
     mdiChevronLeft,
     mdiChevronRight,
+    mdiCheck,
+    mdiClose,
     mdiMapMarkerMultipleOutline,
     mdiMapMarkerOffOutline,
+    mdiPencilOutline,
     mdiTrashCanOutline,
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -133,6 +137,12 @@
       // Not remembered this time; the drawer itself still opens and closes.
     }
   };
+
+  let drawerElement: HTMLElement | undefined = $state();
+
+  // Below the `sm` breakpoint the drawer is an overlay sheet over the map rather than a column beside
+  // it, so it behaves like one: Escape or a click outside it closes it.
+  const isPhoneWidth = () => !globalThis.matchMedia?.('(min-width: 640px)').matches;
 
   // The slide is decoration: anyone who has asked their system for less motion gets a drawer that
   // simply appears and disappears.
@@ -276,10 +286,73 @@
   };
 
   const handleRemoveSavedLocation = async (id: string) => {
+    if (renamingId === id) {
+      handleCancelRename();
+    }
     try {
       await savedLocations.remove(id);
     } catch (error) {
       handleError(error, $t('errors.unable_to_delete_saved_location'));
+    }
+  };
+
+  // One saved location at a time is renamed in place: its row turns into an input holding the current
+  // name. Enter (or the tick) saves and Escape (or the cross) puts the row back as it was. A blank name
+  // is refused rather than saved, and leaves the row open for another go.
+  let renamingId: string | undefined = $state();
+  let renameInput = $state('');
+
+  const handleStartRename = (id: string, name: string) => {
+    renamingId = id;
+    renameInput = name;
+  };
+
+  const handleCancelRename = () => {
+    renamingId = undefined;
+    renameInput = '';
+  };
+
+  const handleRename = async () => {
+    const id = renamingId;
+    const name = renameInput.trim();
+    if (!id || !name) {
+      return;
+    }
+    if ($savedLocations.find((location) => location.id === id)?.name === name) {
+      handleCancelRename();
+      return;
+    }
+    try {
+      await savedLocations.rename(id, name);
+      // Only close the row that was saved: another may have been opened while the request was out.
+      if (renamingId === id) {
+        handleCancelRename();
+      }
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_rename_saved_location'));
+    }
+  };
+
+  const handleRenameKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleRename();
+    }
+  };
+
+  // Escape is offered to the innermost open thing first, so it never throws the whole picker away
+  // while something smaller is open: a rename in progress is cancelled, then the drawer closes when it
+  // is the phone sheet or holds focus, and only after that does the modal itself close. The modal
+  // listens for Escape at the document, so this is where every press arrives, whichever field has it.
+  const handleEscapeKeydown = (event: KeyboardEvent) => {
+    if (renamingId) {
+      event.preventDefault();
+      handleCancelRename();
+      return;
+    }
+    if (drawerOpen && (isPhoneWidth() || drawerElement?.contains(document.activeElement))) {
+      event.preventDefault();
+      setDrawerOpen(false);
     }
   };
 
@@ -311,7 +384,13 @@
   };
 </script>
 
-<Modal title={$t('change_location')} icon={mdiMapMarkerMultipleOutline} size="large" onClose={() => onClose()}>
+<Modal
+  title={$t('change_location')}
+  icon={mdiMapMarkerMultipleOutline}
+  size="large"
+  onClose={() => onClose()}
+  onEscapeKeydown={handleEscapeKeydown}
+>
   <ModalBody>
     <div class="relative flex w-full gap-2">
       <!-- Left: picker -->
@@ -435,17 +514,27 @@
         {/if}
       </button>
 
-      <!-- Saved-locations drawer. The content is laid out at its final width and positioned absolutely,
-           so the slide clips it rather than reflowing it, and a long list scrolls inside the drawer
-           instead of stretching the modal past the map. -->
+      <!-- Saved-locations drawer. From `sm` up it is a column beside the map; below that it is a sheet laid
+           over the map (leaving the handle uncovered, so the handle still closes it), over a backdrop
+           that closes it when clicked. The content is positioned absolutely, so a long list scrolls
+           inside the drawer instead of stretching the modal past the map, and from `sm` up it is laid
+           out at its final width, so the slide clips it rather than reflowing it. -->
       {#if drawerOpen}
+        <button
+          type="button"
+          tabindex="-1"
+          aria-label={$t('close')}
+          class="absolute inset-y-0 start-0 end-10 z-10 rounded-lg bg-black/30 sm:hidden"
+          onclick={() => setDrawerOpen(false)}
+        ></button>
         <aside
           id="saved-locations-drawer"
           aria-label={$t('saved_locations')}
-          class="relative w-56 shrink-0 overflow-hidden"
+          bind:this={drawerElement}
+          class="absolute inset-y-0 end-10 z-20 w-64 max-w-[calc(100%-3rem)] overflow-hidden rounded-lg bg-light shadow-lg sm:relative sm:inset-auto sm:z-auto sm:w-56 sm:max-w-none sm:shrink-0 sm:rounded-none sm:bg-transparent sm:shadow-none"
           transition:drawerSlide
         >
-          <div class="absolute inset-y-0 end-0 flex w-56 flex-col gap-2">
+          <div class="absolute inset-3 flex flex-col gap-2 sm:inset-x-auto sm:inset-y-0 sm:end-0 sm:w-56">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {$t('saved_locations')}
             </p>
@@ -467,20 +556,58 @@
                     .toLowerCase()
                     .includes(savedFilter.toLowerCase())) as loc (loc.id)}
                   <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      class="flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 hover:dark:bg-gray-700"
-                      onclick={() => handleUseSuggested(loc.latitude, loc.longitude, undefined, loc.name)}
-                    >
-                      {loc.name}
-                    </button>
-                    <IconButton
-                      icon={mdiTrashCanOutline}
-                      size="small"
-                      color="secondary"
-                      aria-label={$t('delete')}
-                      onclick={() => handleRemoveSavedLocation(loc.id)}
-                    />
+                    {#if renamingId === loc.id}
+                      <input
+                        type="text"
+                        bind:value={renameInput}
+                        use:initInput
+                        aria-label={$t('rename')}
+                        placeholder={$t('place_name')}
+                        class="min-w-0 flex-1 rounded-lg border border-gray-300 bg-gray-100 px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        onkeydown={handleRenameKeydown}
+                      />
+                      <IconButton
+                        icon={mdiCheck}
+                        size="small"
+                        color="primary"
+                        variant="ghost"
+                        aria-label={$t('save')}
+                        disabled={!renameInput.trim()}
+                        onclick={handleRename}
+                      />
+                      <IconButton
+                        icon={mdiClose}
+                        size="small"
+                        color="secondary"
+                        variant="ghost"
+                        aria-label={$t('cancel')}
+                        onclick={handleCancelRename}
+                      />
+                    {:else}
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 hover:dark:bg-gray-700"
+                        onclick={() => handleUseSuggested(loc.latitude, loc.longitude, undefined, loc.name)}
+                      >
+                        {loc.name}
+                      </button>
+                      <IconButton
+                        icon={mdiPencilOutline}
+                        size="small"
+                        color="secondary"
+                        variant="ghost"
+                        aria-label={$t('rename')}
+                        onclick={() => handleStartRename(loc.id, loc.name)}
+                      />
+                      <IconButton
+                        icon={mdiTrashCanOutline}
+                        size="small"
+                        color="secondary"
+                        variant="ghost"
+                        aria-label={$t('delete')}
+                        onclick={() => handleRemoveSavedLocation(loc.id)}
+                      />
+                    {/if}
                   </div>
                 {/each}
               {/if}
