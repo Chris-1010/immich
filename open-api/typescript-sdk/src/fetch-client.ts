@@ -1220,6 +1220,67 @@ export type RelationshipUpdateDto = {
     subjectId: string;
     typeId: string;
 };
+export type SavedLocationResponseDto = {
+    createdAt: string;
+    id: string;
+    latitude: number;
+    longitude: number;
+    name: string;
+    updatedAt: string;
+};
+export type SavedLocationCreateDto = {
+    latitude: number;
+    longitude: number;
+    /** Trimmed before it is stored. A name that is blank once trimmed is refused. */
+    name: string;
+};
+export type SavedLocationsBulkCreateDto = {
+    /** Everything the browser had saved before saved locations moved to the server. An entry matching
+    one already stored — the same trimmed name and the same coordinates exactly — is skipped, so the
+    import can be sent again after a failed clear without doubling anything up. */
+    locations: SavedLocationCreateDto[];
+};
+export type PersonPlaceResponseDto = {
+    /** The detail row the pin is on. */
+    detailId: string;
+    /** No Until date: the person lives or works there now. Spelled out so the client never derives it. */
+    isCurrent: boolean;
+    /** The kind's name as the owner saved it, such as "Home" in their own language. */
+    key: string;
+    kind: PersonDetailKind;
+    latitude: number;
+    longitude: number;
+    personId: string;
+    /** Hidden people are still offered: the places are the owner's own record, not a face to show. */
+    personIsHidden: boolean;
+    personName: string;
+    /** The person's last change, which is what a face thumbnail URL is cache-busted with. */
+    personUpdatedAt: string;
+    since: string | null;
+    sincePrecision: (PersonDetailDatePrecision) | null;
+    until: string | null;
+    untilPrecision: (PersonDetailDatePrecision) | null;
+    /** The text of the field, such as "Rathmines" or a street address. */
+    value: string;
+};
+export type PlacesResponseDto = {
+    admin1name?: string;
+    admin2name?: string;
+    latitude: number;
+    longitude: number;
+    name: string;
+};
+export type LocationSearchResultDto = {
+    person?: PersonPlaceResponseDto;
+    place?: PlacesResponseDto;
+    saved?: SavedLocationResponseDto;
+    "type": LocationSearchResultType;
+};
+export type SavedLocationUpdateDto = {
+    latitude?: number;
+    longitude?: number;
+    name?: string;
+};
 export type SearchExploreItem = {
     data: AssetResponseDto;
     value: string;
@@ -1298,13 +1359,6 @@ export type SearchAssetResponseDto = {
 export type SearchResponseDto = {
     albums: SearchAlbumResponseDto;
     assets: SearchAssetResponseDto;
-};
-export type PlacesResponseDto = {
-    admin1name?: string;
-    admin2name?: string;
-    latitude: number;
-    longitude: number;
-    name: string;
 };
 export type RandomSearchDto = {
     albumIds?: string[];
@@ -4244,6 +4298,89 @@ export function updateRelationship({ id, relationshipUpdateDto }: {
     })));
 }
 /**
+ * List saved locations
+ */
+export function getSavedLocations(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto[];
+    }>("/saved-locations", {
+        ...opts
+    }));
+}
+/**
+ * Save a location
+ */
+export function createSavedLocation({ savedLocationCreateDto }: {
+    savedLocationCreateDto: SavedLocationCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: SavedLocationResponseDto;
+    }>("/saved-locations", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: savedLocationCreateDto
+    })));
+}
+/**
+ * Save several locations
+ */
+export function createSavedLocations({ savedLocationsBulkCreateDto }: {
+    savedLocationsBulkCreateDto: SavedLocationsBulkCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto[];
+    }>("/saved-locations/bulk", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: savedLocationsBulkCreateDto
+    })));
+}
+/**
+ * Search locations to pick
+ */
+export function searchLocations({ query }: {
+    query?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: LocationSearchResultDto[];
+    }>(`/saved-locations/search${QS.query(QS.explode({
+        query
+    }))}`, {
+        ...opts
+    }));
+}
+/**
+ * Delete a saved location
+ */
+export function deleteSavedLocation({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/saved-locations/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Update a saved location
+ */
+export function updateSavedLocation({ id, savedLocationUpdateDto }: {
+    id: string;
+    savedLocationUpdateDto: SavedLocationUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto;
+    }>(`/saved-locations/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: savedLocationUpdateDto
+    })));
+}
+/**
  * Retrieve assets by city
  */
 export function getAssetsByCity(opts?: Oazapfts.RequestOpts) {
@@ -5802,6 +5939,10 @@ export enum Permission {
     RelationshipTypeDelete = "relationshipType.delete",
     PersonDetailRead = "personDetail.read",
     PersonDetailUpdate = "personDetail.update",
+    SavedLocationCreate = "savedLocation.create",
+    SavedLocationRead = "savedLocation.read",
+    SavedLocationUpdate = "savedLocation.update",
+    SavedLocationDelete = "savedLocation.delete",
     ServerAbout = "server.about",
     ServerApkLinks = "server.apkLinks",
     ServerStorage = "server.storage",
@@ -6024,6 +6165,11 @@ export enum JobName {
 export enum RelationshipGender {
     Male = "male",
     Female = "female"
+}
+export enum LocationSearchResultType {
+    Saved = "saved",
+    Person = "person",
+    Place = "place"
 }
 export enum SearchSuggestionType {
     Country = "country",
