@@ -4,6 +4,7 @@
   import { AppRoute } from '$lib/constants';
   import { locale } from '$lib/stores/preferences.store';
   import { getPeopleThumbnailUrl } from '$lib/utils';
+  import { getDetailSubtitle, isCurrentDetail, sortPastDetails } from '$lib/utils/person-detail-dates';
   import { genderRingClass } from '$lib/utils/person-gender';
   import type { AlongWithPersonResponseDto, PersonDetailResponseDto, RelationshipGender } from '@immich/sdk';
   import { Icon } from '@immich/ui';
@@ -28,6 +29,51 @@
 
   /** How long the list rests at the top and the bottom before turning around, in milliseconds. */
   const TURN_PAUSE = 1500;
+
+  /**
+   * Which half of the list is on show. Current is the default and the only one there is until
+   * something has been moved to Past.
+   */
+  let tab = $state<'current' | 'past'>('current');
+
+  /** In the order they were arranged in, which is the order the server sends them. */
+  const currentDetails = $derived(details.filter((detail) => isCurrentDetail(detail)));
+  const pastDetails = $derived(sortPastDetails(details));
+
+  // Guarded here as well as reset below, so the frame between the last Past row going and the
+  // effect running never draws an empty Past tab with no toggle left to leave it by.
+  const activeTab = $derived(pastDetails.length > 0 ? tab : 'current');
+  const shownDetails = $derived(activeTab === 'current' ? currentDetails : pastDetails);
+
+  const tabs = $derived([
+    { id: 'current' as const, label: $t('details_current') },
+    { id: 'past' as const, label: $t('details_past', { values: { count: pastDetails.length } }) },
+  ]);
+
+  $effect(() => {
+    if (pastDetails.length === 0) {
+      tab = 'current';
+    }
+  });
+
+  /**
+   * Who to show beside a row. A Current row is about now, so it shows who holds the same thing
+   * now; a Past row is history, so it shows everyone who ever held it, those who still do first.
+   */
+  const asAlongWith = (detail: PersonDetailResponseDto) => {
+    const { current, past } = detail.alongWith;
+
+    return isCurrentDetail(detail)
+      ? current
+      : { people: [...current.people, ...past.people], total: current.total + past.total };
+  };
+
+  /** "Since Mar 2019", "As of Oct 2026", "Mar 2019 – Oct 2026" or "Until Oct 2026". */
+  const asSubtitle = (detail: PersonDetailResponseDto) => {
+    const { key, values } = getDetailSubtitle(detail, $locale);
+
+    return $t(key, { values });
+  };
 
   let box = $state<HTMLDivElement>();
   let paused = $state(false);
@@ -160,6 +206,21 @@
     };
   });
 
+  // A different list starts from its top, and rests there a moment before moving, the same as it
+  // does on arriving at either end.
+  $effect(() => {
+    void activeTab;
+
+    if (box) {
+      box.scrollTop = 0;
+    }
+
+    direction = 1;
+    lastFrameAt = undefined;
+    restingUntil = performance.now() + TURN_PAUSE;
+    openPopover = undefined;
+  });
+
   onDestroy(() => {
     if (frame !== undefined) {
       cancelAnimationFrame(frame);
@@ -225,13 +286,33 @@
        the half-screen ceiling on the cell around it, and a fixed width inside that would leave the
        box floating short of the edge of the page. -->
   <div class="p-4 sm:px-6 w-full">
-    <!-- Three rows tall whatever the list holds, so the header never changes height as details are
-         added. Anything past the third row is what the scrolling is for. -->
+    <!-- Only once there is history to switch to. Transparent behind the pills, so nothing here
+         paints a background of its own over whatever the header is later given behind it. -->
+    {#if pastDetails.length > 0}
+      <div role="tablist" aria-label={$t('person_details')} class="mb-1 flex gap-1 text-xs">
+        {#each tabs as option (option.id)}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === option.id}
+            class="rounded-full px-2.5 py-0.5 {activeTab === option.id
+              ? 'bg-subtle text-primary'
+              : 'text-gray-500 dark:text-gray-400 hover:text-primary'}"
+            onclick={() => (tab = option.id)}
+          >
+            {option.label}
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Three two-line rows tall whatever the list holds, so the header never changes height as
+         details are added. Anything past the third row is what the scrolling is for. -->
     <div
       bind:this={box}
-      role="group"
+      role={pastDetails.length > 0 ? 'tabpanel' : 'group'}
       aria-label={$t('person_details')}
-      class="h-22 overflow-y-auto overscroll-contain rounded-2xl bg-subtle/40 px-3 py-1"
+      class="h-35 overflow-y-auto overscroll-contain rounded-2xl bg-subtle/40 px-3 py-1"
       onmouseenter={() => (paused = true)}
       onmouseleave={() => (paused = false)}
       onfocusin={() => (paused = true)}
@@ -243,10 +324,13 @@
            the shared columns with `subgrid`, which is what lets the row stay a real element: the
            tooltip and the row height need a box, and `display: contents` would generate neither. -->
       <ul class="grid grid-cols-[fit-content(33%)_1fr_auto]">
-        {#each details as detail (detail.id)}
-          {@const hidden = Math.max(0, detail.alongWith.total - INLINE_FACES)}
+        {#each shownDetails as detail (detail.id)}
+          {@const alongWith = asAlongWith(detail)}
+          {@const hidden = Math.max(0, alongWith.total - INLINE_FACES)}
+          <!-- Two lines: the fact itself, then when it held. The second line sits under the value
+               and runs on under the faces, since the key column is already as narrow as it can be. -->
           <li
-            class="col-span-3 grid h-7 grid-cols-subgrid place-items-center gap-x-4 text-sm"
+            class="col-span-3 grid grid-cols-subgrid grid-rows-[1.5rem_1rem] place-items-center gap-x-4 py-0.5 text-sm"
             title={asAge(detail.createdAt)}
           >
             <span class="w-full truncate text-gray-500 dark:text-gray-400">{detail.key}</span>
@@ -256,7 +340,7 @@
             <!-- Last column, so the faces line up against the far edge of the box rather than
                  tracking the end of whatever value happens to precede them. -->
             <span class="flex shrink-0 place-items-center gap-1">
-              {#each detail.alongWith.people.slice(0, INLINE_FACES) as person (person.id)}
+              {#each alongWith.people.slice(0, INLINE_FACES) as person (person.id)}
                 <a href="{AppRoute.PEOPLE}/{person.id}" title={asFaceTitle(person)}>
                   <ImageThumbnail
                     circle
@@ -274,14 +358,23 @@
                 <button
                   type="button"
                   class="rounded-full px-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
-                  aria-label={$t('along_with_count', { values: { count: detail.alongWith.total } })}
+                  aria-label={$t(isCurrentDetail(detail) ? 'along_with_current_count' : 'along_with_count', {
+                    values: { count: alongWith.total },
+                  })}
                   onclick={(event) => handlePopover(event, detail.id)}
                 >
                   +{hidden}
                 </button>
               {/if}
             </span>
+
+            <span class="col-span-2 col-start-2 w-full truncate text-xs leading-4 text-gray-500 dark:text-gray-400">
+              {asSubtitle(detail)}
+            </span>
           </li>
+        {:else}
+          <!-- Everything has been moved to Past. The toggle above is the way to it. -->
+          <li class="col-span-3 py-1 text-sm text-gray-500 dark:text-gray-400">{$t('details_none_current')}</li>
         {/each}
       </ul>
     </div>
@@ -325,44 +418,61 @@
              the link inside it both opt into the shared columns with `subgrid`, since the link has to
              stay one element to be one hover target and one thing to click. -->
         <ul class="grid grid-cols-[auto_auto_1fr]">
-          {#each detail.alongWith.people as person (person.id)}
-            <!-- What this person has in common beyond the pair everyone here shares. The list is
-                 already ordered by how much that is, so the labelled ones lead. -->
-            {@const also = asAlso(person)}
-            <li class="col-span-3 grid grid-cols-subgrid">
-              <a
-                href="{AppRoute.PEOPLE}/{person.id}"
-                class="col-span-3 grid grid-cols-subgrid items-start gap-2 rounded-xl p-1 hover:bg-subtle"
+          <!-- Who holds it now, then who used to, each under a heading of its own. A group nobody is
+               in is left out rather than headed "(0)". Both share the one grid, so the "also" column
+               lines up across the two. -->
+          {#each [{ id: 'current', group: detail.alongWith.current }, { id: 'past', group: detail.alongWith.past }] as { id, group } (id)}
+            {#if group.total > 0}
+              <li
+                class="col-span-3 px-2 pt-1 text-xs font-medium text-gray-500 dark:text-gray-400"
+                title={$t(id === 'current' ? 'along_with_current_count' : 'along_with_past_count', {
+                  values: { count: group.total },
+                })}
               >
-                <ImageThumbnail
-                  circle
-                  shadow
-                  url={getPeopleThumbnailUrl(person)}
-                  altText={person.name}
-                  widthStyle="1.5rem"
-                  heightStyle="1.5rem"
-                  class="shrink-0 {genderRingClass(genders[person.id])}"
-                />
-                <span class="text-sm text-primary">{person.name || $t('person')}</span>
+                {$t(id === 'current' ? 'along_with_currently' : 'along_with_previously', {
+                  values: { count: group.total },
+                })}
+              </li>
 
-                <!-- Line height borrowed from the name beside it, so the two first lines sit on the
-                     same baseline despite the smaller text. -->
-                <span class="text-xs leading-5 text-gray-500 dark:text-gray-400">{also ?? ''}</span>
-              </a>
-            </li>
+              {#each group.people as person (person.id)}
+                <!-- What this person has in common beyond the pair everyone here shares. The list is
+                     already ordered by how much that is, so the labelled ones lead. -->
+                {@const also = asAlso(person)}
+                <li class="col-span-3 grid grid-cols-subgrid">
+                  <a
+                    href="{AppRoute.PEOPLE}/{person.id}"
+                    class="col-span-3 grid grid-cols-subgrid items-start gap-2 rounded-xl p-1 hover:bg-subtle"
+                  >
+                    <ImageThumbnail
+                      circle
+                      shadow
+                      url={getPeopleThumbnailUrl(person)}
+                      altText={person.name}
+                      widthStyle="1.5rem"
+                      heightStyle="1.5rem"
+                      class="shrink-0 {genderRingClass(genders[person.id])}"
+                    />
+                    <span class="text-sm text-primary">{person.name || $t('person')}</span>
+
+                    <!-- Line height borrowed from the name beside it, so the two first lines sit on
+                         the same baseline despite the smaller text. -->
+                    <span class="text-xs leading-5 text-gray-500 dark:text-gray-400">{also ?? ''}</span>
+                  </a>
+                </li>
+              {/each}
+
+              <!-- The heading counts the whole group while the server sends only the head of it, so
+                   a group that outgrew the list says so rather than quietly ending at the fiftieth
+                   face. Those fifty are the closest fifty: the cap is applied after the ranking, not
+                   before it. -->
+              {#if group.total > group.people.length}
+                <li class="col-span-3 px-2 pb-1 text-xs text-gray-500 dark:text-gray-400">
+                  {$t('along_with_showing', { values: { shown: group.people.length, total: group.total } })}
+                </li>
+              {/if}
+            {/if}
           {/each}
         </ul>
-
-        <!-- The badge counts the whole group while the server sends only the head of it, so a group
-             that outgrew the list says so rather than quietly ending at the fiftieth face. Those
-             fifty are the closest fifty: the cap is applied after the ranking, not before it. -->
-        {#if detail.alongWith.total > detail.alongWith.people.length}
-          <p class="px-2 pt-1 text-xs text-gray-500 dark:text-gray-400">
-            {$t('along_with_showing', {
-              values: { shown: detail.alongWith.people.length, total: detail.alongWith.total },
-            })}
-          </p>
-        {/if}
       </div>
     {/if}
   {/if}
