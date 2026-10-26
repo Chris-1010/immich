@@ -8,7 +8,7 @@
   import { genderRingClass } from '$lib/utils/person-gender';
   import type { AlongWithPersonResponseDto, PersonDetailResponseDto, RelationshipGender } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiPencilOutline, mdiPlus } from '@mdi/js';
+  import { mdiHistory, mdiPencilOutline, mdiPlus } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -66,6 +66,29 @@
     return isCurrentDetail(detail)
       ? current
       : { people: [...current.people, ...past.people], total: current.total + past.total };
+  };
+
+  /**
+   * Whether a Current row's popover holds people the row never shows inline: those who held it
+   * before. With few enough current holders to fit, there is no `+N` to open the popover from, so
+   * a small history mark stands in for it rather than leaving them out of reach.
+   */
+  const hasHiddenPast = (detail: PersonDetailResponseDto) => isCurrentDetail(detail) && detail.alongWith.past.total > 0;
+
+  /** Says who the trigger stands for, with those who used to share it named apart from those who do. */
+  const asHiddenLabel = (detail: PersonDetailResponseDto) => {
+    const { current, past } = detail.alongWith;
+
+    if (!isCurrentDetail(detail)) {
+      return $t('along_with_count', { values: { count: current.total + past.total } });
+    }
+
+    return [
+      current.total > 0 && $t('along_with_current_count', { values: { count: current.total } }),
+      past.total > 0 && $t('along_with_past_count', { values: { count: past.total } }),
+    ]
+      .filter(Boolean)
+      .join(', ');
   };
 
   /** "Since Mar 2019", "As of Oct 2026", "Mar 2019 – Oct 2026" or "Until Oct 2026". */
@@ -354,16 +377,18 @@
                 </a>
               {/each}
 
-              {#if hidden > 0}
+              {#if hidden > 0 || hasHiddenPast(detail)}
                 <button
                   type="button"
                   class="rounded-full px-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
-                  aria-label={$t(isCurrentDetail(detail) ? 'along_with_current_count' : 'along_with_count', {
-                    values: { count: alongWith.total },
-                  })}
+                  aria-label={asHiddenLabel(detail)}
                   onclick={(event) => handlePopover(event, detail.id)}
                 >
-                  +{hidden}
+                  {#if hidden > 0}
+                    +{hidden}
+                  {:else}
+                    <Icon icon={mdiHistory} size="1em" aria-hidden />
+                  {/if}
                 </button>
               {/if}
             </span>

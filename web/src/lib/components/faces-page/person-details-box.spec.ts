@@ -86,4 +86,26 @@ describe('PersonDetailsBox', () => {
 
     expect(screen.getByText('+3')).toBeInTheDocument();
   });
+
+  it('still reaches past holders from a current row with no +N', async () => {
+    const user = userEvent.setup();
+    const alongWith = {
+      current: { total: 1, people: [face('c1')] },
+      past: { total: 2, people: ['p1', 'p2'].map((id) => face(id)) },
+    };
+    render(PersonDetailsBox, { details: [detail('a', 'Intel', { alongWith })], onEdit: vi.fn() });
+
+    expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /along_with_past_count/ }));
+
+    expect(screen.getByText('along_with_previously')).toBeInTheDocument();
+  });
+
+  it('offers no trigger when everyone is already shown', () => {
+    const alongWith = { current: { total: 2, people: [face('c1'), face('c2')] }, past: { total: 0, people: [] } };
+    render(PersonDetailsBox, { details: [detail('a', 'Intel', { alongWith })], onEdit: vi.fn() });
+
+    expect(screen.queryByRole('button', { name: /along_with/ })).not.toBeInTheDocument();
+  });
 });
