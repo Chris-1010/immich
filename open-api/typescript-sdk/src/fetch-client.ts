@@ -967,6 +967,11 @@ export type PersonDetailResponseDto = {
     createdAt: string;
     id: string;
     key: string;
+    /** The contact field this detail is, or null for a free-text one. */
+    kind: (PersonDetailKind) | null;
+    /** The pin of a Home or Work detail. Both set or both null. */
+    latitude: number | null;
+    longitude: number | null;
     /** When the fact became true, snapped to the start of its year or month. Null when unknown. */
     since: string | null;
     sincePrecision: (PersonDetailDatePrecision) | null;
@@ -987,6 +992,12 @@ export type PersonDetailUpsertDto = {
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
+    /** The contact field this detail is, or absent/null for a free-text one. Only top-level details
+    take one: the subdetail type has no such field, so a kind sent on a subdetail is stripped. */
+    kind?: (PersonDetailKind) | null;
+    /** A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one. */
+    latitude?: number | null;
+    longitude?: number | null;
     /** When the fact became true, as a full date. Snapped on write to the first day of the year or
     month named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored. */
     since?: string | null;
@@ -1029,6 +1040,12 @@ export type PersonDetailBulkItemDto = {
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
+    /** The contact field this detail is, or absent/null for a free-text one. Only top-level details
+    take one: the subdetail type has no such field, so a kind sent on a subdetail is stripped. */
+    kind?: (PersonDetailKind) | null;
+    /** A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one. */
+    latitude?: number | null;
+    longitude?: number | null;
     /** Who among the people named by the request should have their existing value under this key
     replaced rather than gaining a second row. Everyone else keeps what they had. */
     replaceForPersonIds?: string[];
@@ -1045,6 +1062,9 @@ export type PersonDetailsBulkAddDto = {
 export type PersonDetailConflictSearchDto = {
     /** Matched with casing ignored, the same way details are matched everywhere else. */
     keys: string[];
+    /** Contact-field kinds to look up as well. A kind conflicts on the kind, never on key text, and
+    a free-text key never conflicts with a kind row, so the two lists are asked about separately. */
+    kinds?: PersonDetailKind[];
     personIds: string[];
 };
 export type PersonDetailConflictPersonResponseDto = {
@@ -1053,8 +1073,11 @@ export type PersonDetailConflictPersonResponseDto = {
     value: string;
 };
 export type PersonDetailConflictResponseDto = {
-    /** The key as it was asked about, so the client can match a row to its answer. */
+    /** The key as it was asked about, so the client can match a row to its answer. For a kind
+    conflict this is the kind itself, and `kind` is set. */
     key: string;
+    /** The kind asked about, or null for a free-text key. */
+    kind: (PersonDetailKind) | null;
     people: PersonDetailConflictPersonResponseDto[];
 };
 export type PersonDetailSuggestionResponseDto = {
@@ -3940,8 +3963,9 @@ export function getPersonDetailKeys({ limit, parentKey, term }: {
 /**
  * Suggest detail values
  */
-export function getPersonDetailValues({ detailKey, limit, parentKey, term }: {
-    detailKey: string;
+export function getPersonDetailValues({ detailKey, kind, limit, parentKey, term }: {
+    detailKey?: string;
+    kind?: PersonDetailKind;
     limit?: number;
     parentKey?: string;
     term?: string;
@@ -3951,6 +3975,7 @@ export function getPersonDetailValues({ detailKey, limit, parentKey, term }: {
         data: PersonDetailSuggestionResponseDto[];
     }>(`/person-details/values${QS.query(QS.explode({
         detailKey,
+        kind,
         limit,
         parentKey,
         term
@@ -5915,6 +5940,12 @@ export enum MemoryType {
 export enum PartnerDirection {
     SharedBy = "shared-by",
     SharedWith = "shared-with"
+}
+export enum PersonDetailKind {
+    Work = "work",
+    Home = "home",
+    Email = "email",
+    Phone = "phone"
 }
 export enum PersonDetailDatePrecision {
     Year = "year",

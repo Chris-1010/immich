@@ -8289,11 +8289,20 @@
         "parameters": [
           {
             "name": "detailKey",
-            "required": true,
+            "required": false,
             "in": "query",
             "description": "The key whose values are wanted, since \"Cork\" means nothing without \"Hometown\" above it.\n\nNamed `detailKey` rather than `key`: a query parameter called `key` is how a shared link\nannounces itself, so the guard would try to log the request in as one and turn a search for\n\"Secondary School\" into \"Invalid share key\" before the controller ever ran.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "description": "The contact-field kind whose values are wanted, in place of `detailKey`: kind rows are matched\non kind, whatever key text they were saved under. One of the two is required.",
+            "schema": {
+              "$ref": "#/components/schemas/PersonDetailKind"
             }
           },
           {
@@ -19277,6 +19286,24 @@
             "maxLength": 1000,
             "type": "string"
           },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or absent/null for a free-text one. Only top-level details\ntake one: the subdetail type has no such field, so a kind sent on a subdetail is stripped.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one.",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "nullable": true,
+            "type": "number"
+          },
           "replaceForPersonIds": {
             "description": "Who among the people named by the request should have their existing value under this key\nreplaced rather than gaining a second row. Everyone else keeps what they had.",
             "items": {
@@ -19325,8 +19352,17 @@
       "PersonDetailConflictResponseDto": {
         "properties": {
           "key": {
-            "description": "The key as it was asked about, so the client can match a row to its answer.",
+            "description": "The key as it was asked about, so the client can match a row to its answer. For a kind\nconflict this is the kind itself, and `kind` is set.",
             "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The kind asked about, or null for a free-text key.",
+            "nullable": true
           },
           "people": {
             "items": {
@@ -19337,6 +19373,7 @@
         },
         "required": [
           "key",
+          "kind",
           "people"
         ],
         "type": "object"
@@ -19348,6 +19385,13 @@
             "items": {
               "maxLength": 1000,
               "type": "string"
+            },
+            "type": "array"
+          },
+          "kinds": {
+            "description": "Contact-field kinds to look up as well. A kind conflicts on the kind, never on key text, and\na free-text key never conflicts with a kind row, so the two lists are asked about separately.",
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailKind"
             },
             "type": "array"
           },
@@ -19370,6 +19414,16 @@
         "enum": [
           "year",
           "month"
+        ],
+        "type": "string"
+      },
+      "PersonDetailKind": {
+        "description": "The contact field this detail is, or null for a free-text one.",
+        "enum": [
+          "work",
+          "home",
+          "email",
+          "phone"
         ],
         "type": "string"
       },
@@ -19403,6 +19457,26 @@
           },
           "key": {
             "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or null for a free-text one.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "The pin of a Home or Work detail. Both set or both null.",
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
           },
           "since": {
             "description": "When the fact became true, snapped to the start of its year or month. Null when unknown.",
@@ -19450,6 +19524,9 @@
           "createdAt",
           "id",
           "key",
+          "kind",
+          "latitude",
+          "longitude",
           "since",
           "sincePrecision",
           "sortOrder",
@@ -19485,6 +19562,24 @@
           "key": {
             "maxLength": 1000,
             "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or absent/null for a free-text one. Only top-level details\ntake one: the subdetail type has no such field, so a kind sent on a subdetail is stripped.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one.",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "nullable": true,
+            "type": "number"
           },
           "since": {
             "description": "When the fact became true, as a full date. Snapped on write to the first day of the year or\nmonth named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored.",

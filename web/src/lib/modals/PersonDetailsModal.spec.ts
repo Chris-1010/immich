@@ -135,7 +135,7 @@ describe('PersonDetailsModal', () => {
 
   it('reports who already records a typed key when adding to several people', async () => {
     vi.mocked(getPersonDetailConflicts).mockResolvedValue([
-      { key: 'hometown', people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
+      { key: 'hometown', kind: null, people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
     ]);
 
     render(PersonDetailsModal, { people: [person('person-1', 'Amy'), person('person-2', 'Tom')], onClose: vi.fn() });
@@ -149,7 +149,7 @@ describe('PersonDetailsModal', () => {
 
   it('appends to everyone until a conflicting face is turned over to replacing', async () => {
     vi.mocked(getPersonDetailConflicts).mockResolvedValue([
-      { key: 'hometown', people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
+      { key: 'hometown', kind: null, people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
     ]);
 
     render(PersonDetailsModal, { people: [person('person-1', 'Amy'), person('person-2', 'Tom')], onClose: vi.fn() });
@@ -182,7 +182,7 @@ describe('PersonDetailsModal', () => {
 
   it('sends the choice to overwrite rather than archive with a bulk row that replaces someone', async () => {
     vi.mocked(getPersonDetailConflicts).mockResolvedValue([
-      { key: 'hometown', people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
+      { key: 'hometown', kind: null, people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
     ]);
 
     render(PersonDetailsModal, { people: [person('person-1', 'Amy'), person('person-2', 'Tom')], onClose: vi.fn() });
