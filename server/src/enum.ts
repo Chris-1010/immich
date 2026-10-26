@@ -905,3 +905,15 @@ export enum PersonDetailDatePrecision {
   Year = 'year',
   Month = 'month',
 }
+
+/**
+ * The reserved kinds a detail can have, which make it a contact field with a fixed chip in the
+ * person's header. Free-text details have none. Code reads this, never the key text, since the key
+ * of a kind row is just the kind's name in whatever language the owner saved it in.
+ */
+export enum PersonDetailKind {
+  Work = 'work',
+  Home = 'home',
+  Email = 'email',
+  Phone = 'phone',
+}

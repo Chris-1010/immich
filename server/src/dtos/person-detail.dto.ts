@@ -5,14 +5,22 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsInt,
+  IsLatitude,
+  IsLongitude,
   IsNotEmpty,
   IsString,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { PersonDetailDatePrecision } from 'src/enum';
-import { AlongWith, AlongWithGroup, PersonDetail } from 'src/repositories/person-detail.repository';
+import { PersonDetailDatePrecision, PersonDetailKind } from 'src/enum';
+import {
+  AlongWith,
+  AlongWithGroup,
+  detailKeyToken,
+  detailMatchKey,
+  PersonDetail,
+} from 'src/repositories/person-detail.repository';
 import { asDateString } from 'src/utils/date';
 import { IsDateStringFormat, Optional, ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
@@ -49,6 +57,22 @@ export class PersonSubdetailUpsertDto {
 
 /** A top-level detail without its dates, which is all a bulk insert writes. */
 export class PersonDetailWithSubdetailsDto extends PersonSubdetailUpsertDto {
+  /**
+   * The contact field this detail is, or absent/null for a free-text one. Only top-level details
+   * take one: the subdetail type has no such field, so a kind sent on a subdetail is stripped.
+   */
+  @ValidateEnum({ enum: PersonDetailKind, name: 'PersonDetailKind', optional: true, nullable: true })
+  kind?: PersonDetailKind | null;
+
+  /** A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one. */
+  @IsLatitude()
+  @Optional({ nullable: true })
+  latitude?: number | null;
+
+  @IsLongitude()
+  @Optional({ nullable: true })
+  longitude?: number | null;
+
   /**
    * What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
    * one level deep, which is why these carry no subdetails of their own.
@@ -142,6 +166,13 @@ export class PersonDetailConflictSearchDto {
   @MaxLength(MAX_DETAIL_LENGTH, { each: true })
   @ArrayMaxSize(MAX_DETAILS_PER_PERSON)
   keys!: string[];
+
+  /**
+   * Contact-field kinds to look up as well. A kind conflicts on the kind, never on key text, and
+   * a free-text key never conflicts with a kind row, so the two lists are asked about separately.
+   */
+  @ValidateEnum({ enum: PersonDetailKind, name: 'PersonDetailKind', each: true, optional: true })
+  kinds?: PersonDetailKind[];
 }
 
 export class PersonDetailSuggestionSearchDto {
@@ -175,7 +206,15 @@ export class PersonDetailValueSuggestionSearchDto extends PersonDetailSuggestion
    */
   @IsString()
   @IsNotEmpty()
-  detailKey!: string;
+  @Optional()
+  detailKey?: string;
+
+  /**
+   * The contact-field kind whose values are wanted, in place of `detailKey`: kind rows are matched
+   * on kind, whatever key text they were saved under. One of the two is required.
+   */
+  @ValidateEnum({ enum: PersonDetailKind, name: 'PersonDetailKind', optional: true })
+  kind?: PersonDetailKind;
 }
 
 /** A key and a value with nothing else attached, for naming something rather than showing it. */
@@ -262,6 +301,17 @@ export class PersonDetailResponseDto {
   @ValidateEnum({ enum: PersonDetailDatePrecision, name: 'PersonDetailDatePrecision', nullable: true })
   untilPrecision!: PersonDetailDatePrecision | null;
 
+  /** The contact field this detail is, or null for a free-text one. */
+  @ValidateEnum({ enum: PersonDetailKind, name: 'PersonDetailKind', nullable: true })
+  kind!: PersonDetailKind | null;
+
+  /** The pin of a Home or Work detail. Both set or both null. */
+  @ApiProperty({ type: 'number', format: 'double', nullable: true })
+  latitude!: number | null;
+
+  @ApiProperty({ type: 'number', format: 'double', nullable: true })
+  longitude!: number | null;
+
   subdetails!: PersonSubdetailResponseDto[];
 
   alongWith!: AlongWithResponseDto;
@@ -283,13 +333,18 @@ export class PersonDetailConflictPersonResponseDto {
 }
 
 export class PersonDetailConflictResponseDto {
-  /** The key as it was asked about, so the client can match a row to its answer. */
+  /**
+   * The key as it was asked about, so the client can match a row to its answer. For a kind
+   * conflict this is the kind itself, and `kind` is set.
+   */
   key!: string;
+
+  /** The kind asked about, or null for a free-text key. */
+  @ValidateEnum({ enum: PersonDetailKind, name: 'PersonDetailKind', nullable: true })
+  kind!: PersonDetailKind | null;
+
   people!: PersonDetailConflictPersonResponseDto[];
 }
-
-/** The key and value as they are compared: both ends of a match are trimmed and lowercased. */
-const matchKey = (key: string, value: string) => `${key.trim().toLowerCase()} ${value.trim().toLowerCase()}`;
 
 /**
  * What is needed to name someone else's detail back to the subject in the subject's own words.
@@ -308,8 +363,8 @@ export function mapPersonDetail(
   alongWith: Map<string, AlongWith>,
   names: PersonDetailNames,
 ): PersonDetailResponseDto {
-  const group = alongWith.get(matchKey(detail.key, detail.value));
-  const own = detail.key.trim().toLowerCase();
+  const group = alongWith.get(detailMatchKey(detail));
+  const own = detailKeyToken(detail);
 
   const asGroup = (half?: AlongWithGroup): AlongWithGroupResponseDto => ({
     total: half?.total ?? 0,
@@ -337,6 +392,9 @@ export function mapPersonDetail(
     sincePrecision: detail.sincePrecision,
     until: asDateString(detail.until),
     untilPrecision: detail.untilPrecision,
+    kind: detail.kind,
+    latitude: detail.latitude,
+    longitude: detail.longitude,
     subdetails: detail.subdetails.map(({ id, key, value, sortOrder }) => ({ id, key, value, sortOrder })),
     alongWith: { current: asGroup(group?.current), past: asGroup(group?.past) },
   };

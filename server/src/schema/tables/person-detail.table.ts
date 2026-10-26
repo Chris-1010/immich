@@ -1,5 +1,5 @@
 import { UpdatedAtTrigger, UpdateIdColumn } from 'src/decorators';
-import { PersonDetailDatePrecision } from 'src/enum';
+import { PersonDetailDatePrecision, PersonDetailKind } from 'src/enum';
 import { PersonTable } from 'src/schema/tables/person.table';
 import { UserTable } from 'src/schema/tables/user.table';
 import {
@@ -34,6 +34,17 @@ import {
 // separate `columns` and `expression` options.
 @Index({ name: 'person_detail_owner_key_idx', expression: `"ownerId", lower("key")` })
 @Index({ name: 'person_detail_owner_key_value_idx', expression: `"ownerId", lower("key"), lower("value")` })
+// Kind rows match each other on kind and value rather than key text, so along-with and per-kind
+// value suggestions need their own index. Partial, because free-text rows are the bulk of the table
+// and never look anything up by kind.
+@Index({
+  name: 'person_detail_owner_kind_value_idx',
+  expression: `"ownerId", "kind", lower("value")`,
+  where: `(kind IS NOT NULL)`,
+})
+// The pinned Home and Work rows the location picker offers as people's places. Few rows in a
+// large table, which is the case a partial index is for.
+@Index({ name: 'person_detail_owner_pinned_idx', columns: ['ownerId'], where: `(latitude IS NOT NULL)` })
 export class PersonDetailTable {
   @PrimaryGeneratedColumn()
   id!: Generated<string>;
@@ -65,6 +76,24 @@ export class PersonDetailTable {
   value!: string;
 
   /** Position in the list on the person's page. Assigned from the array order on every save. */
+  /**
+   * The contact field this row is — Work, Home, Email or Phone — or null for a free-text detail.
+   * A kind row is otherwise a normal detail: it has a key (the kind's name as the owner saw it), a
+   * value, dates, subdetails and an along-with group. Subdetails never carry one.
+   */
+  @Column({ nullable: true })
+  kind!: PersonDetailKind | null;
+
+  /**
+   * Where a Home or Work row is, if the owner set a pin. Both or neither, and only on those two
+   * kinds: an email address has no place on a map. The writers enforce both, not the schema.
+   */
+  @Column({ type: 'double precision', nullable: true })
+  latitude!: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude!: number | null;
+
   @Column({ type: 'integer', default: 0 })
   sortOrder!: Generated<number>;
 
