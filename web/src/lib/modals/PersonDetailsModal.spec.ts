@@ -4,10 +4,13 @@ import {
   getPersonDetailConflicts,
   getPersonDetailKeys,
   getPersonDetailValues,
+  PersonDetailDatePrecision,
+  updatePersonDetails,
   type PersonResponseDto,
 } from '@immich/sdk';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { DateTime } from 'luxon';
 
 // Partial, because the modal now reaches the thumbnail helpers and those pull in enough of the SDK
 // that replacing the whole module leaves the store layer without the constants it reads at import.
@@ -163,10 +166,223 @@ describe('PersonDetailsModal', () => {
         personDetailsBulkAddDto: {
           personIds: ['person-1', 'person-2'],
           details: [
-            { id: undefined, key: 'Hometown', value: 'Cork', subdetails: [], replaceForPersonIds: ['person-2'] },
+            {
+              id: undefined,
+              key: 'Hometown',
+              value: 'Cork',
+              subdetails: [],
+              replaceForPersonIds: ['person-2'],
+              archiveReplaced: true,
+            },
           ],
         },
       }),
     );
+  });
+
+  it('sends the choice to overwrite rather than archive with a bulk row that replaces someone', async () => {
+    vi.mocked(getPersonDetailConflicts).mockResolvedValue([
+      { key: 'hometown', people: [{ id: 'person-2', name: 'Tom', value: 'Dublin' }] },
+    ]);
+
+    render(PersonDetailsModal, { people: [person('person-1', 'Amy'), person('person-2', 'Tom')], onClose: vi.fn() });
+
+    await userEvent.type(screen.getByPlaceholderText('detail_key'), 'Hometown');
+    await userEvent.type(screen.getByPlaceholderText('detail_value'), 'Cork');
+    await waitFor(() => expect(screen.getByText('detail_conflicts')).toBeDefined());
+
+    // Nothing is being overwritten yet, so there is nothing to keep.
+    expect(screen.queryByLabelText('detail_archive_old_bulk')).toBeNull();
+
+    await userEvent.click(screen.getByLabelText(/Tom/));
+    await userEvent.click(screen.getByLabelText('detail_archive_old_bulk'));
+    await userEvent.click(screen.getByText('apply'));
+
+    await waitFor(() => expect(addPersonDetails).toHaveBeenCalled());
+    expect(vi.mocked(addPersonDetails).mock.calls[0][0].personDetailsBulkAddDto.details[0]).toMatchObject({
+      replaceForPersonIds: ['person-2'],
+      archiveReplaced: false,
+    });
+  });
+
+  it('sends no archive flag on a bulk row that replaces nobody', async () => {
+    render(PersonDetailsModal, { people: [person('person-1', 'Amy')], onClose: vi.fn() });
+
+    await userEvent.type(screen.getByPlaceholderText('detail_key'), 'Hometown');
+    await userEvent.type(screen.getByPlaceholderText('detail_value'), 'Cork');
+    await userEvent.click(screen.getByText('apply'));
+
+    await waitFor(() => expect(addPersonDetails).toHaveBeenCalled());
+    expect(vi.mocked(addPersonDetails).mock.calls[0][0].personDetailsBulkAddDto.details[0]).not.toHaveProperty(
+      'archiveReplaced',
+    );
+  });
+
+  describe('Current and Past', () => {
+    const thisMonth = () => DateTime.now().startOf('month').toISODate();
+    const undated = { since: null, sincePrecision: null, until: null, untilPrecision: null };
+
+    const saved = () => vi.mocked(updatePersonDetails).mock.calls[0][0].personDetailsUpdateDto.details;
+
+    it('moves the old value to Past with its subdetails when the value is changed', async () => {
+      const details = [
+        {
+          ...detail('detail-1', 'Works at', 'Intel', [{ id: 'sub-1', key: 'Role', value: 'Engineer' }]),
+          since: '2019-03-01',
+          sincePrecision: PersonDetailDatePrecision.Month,
+        },
+      ];
+      render(PersonDetailsModal, { personId: 'person-1', details, onClose: vi.fn() });
+
+      const value = screen.getByDisplayValue('Intel');
+      await userEvent.clear(value);
+      await userEvent.type(value, 'Google');
+
+      expect(screen.getByLabelText('detail_archive_old')).toBeDefined();
+
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+      expect(saved()).toEqual([
+        { id: undefined, key: 'Works at', value: 'Google', subdetails: [], ...undated },
+        {
+          id: 'detail-1',
+          key: 'Works at',
+          value: 'Intel',
+          subdetails: [{ id: 'sub-1', key: 'Role', value: 'Engineer' }],
+          since: '2019-03-01',
+          sincePrecision: 'month',
+          until: thisMonth(),
+          untilPrecision: 'month',
+        },
+      ]);
+    });
+
+    it('updates in place when moving the old value is unticked', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Works at', 'Intel')],
+        onClose: vi.fn(),
+      });
+
+      const value = screen.getByDisplayValue('Intel');
+      await userEvent.clear(value);
+      await userEvent.type(value, 'Google');
+      await userEvent.click(screen.getByLabelText('detail_archive_old'));
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+      expect(saved()).toEqual([{ id: 'detail-1', key: 'Works at', value: 'Google', subdetails: [], ...undated }]);
+    });
+
+    it('offers nothing for a changed key, or once the value is put back', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Works at', 'Intel')],
+        onClose: vi.fn(),
+      });
+
+      const key = screen.getByDisplayValue('Works at');
+      await userEvent.clear(key);
+      await userEvent.type(key, 'Employer');
+      expect(screen.queryByLabelText('detail_archive_old')).toBeNull();
+
+      const value = screen.getByDisplayValue('Intel');
+      await userEvent.type(value, 'x');
+      expect(screen.getByLabelText('detail_archive_old')).toBeDefined();
+
+      await userEvent.type(value, '{Backspace}');
+      expect(screen.queryByLabelText('detail_archive_old')).toBeNull();
+    });
+
+    it('ends a current detail this month and moves it to Past', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Works at', 'Intel'), detail('detail-2', 'Hometown', 'Cork')],
+        onClose: vi.fn(),
+      });
+
+      expect(screen.queryByRole('tablist')).toBeNull();
+
+      await userEvent.click(screen.getAllByText('detail_end')[0]);
+
+      // Gone from Current, and the Past tab is there to find it under.
+      expect(screen.queryByDisplayValue('Intel')).toBeNull();
+      await userEvent.click(screen.getByRole('tab', { name: 'details_past' }));
+      expect(screen.getByDisplayValue('Intel')).toBeDefined();
+
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+      expect(saved()[0]).toMatchObject({ id: 'detail-1', until: thisMonth(), untilPrecision: 'month' });
+      expect(saved()[1]).toMatchObject({ id: 'detail-2', until: null });
+    });
+
+    it('restores a past detail to Current', async () => {
+      const details = [
+        detail('detail-1', 'Hometown', 'Cork'),
+        {
+          ...detail('detail-2', 'Works at', 'Intel'),
+          until: '2024-05-01',
+          untilPrecision: PersonDetailDatePrecision.Month,
+        },
+      ];
+      render(PersonDetailsModal, { personId: 'person-1', details, onClose: vi.fn() });
+
+      expect(screen.queryByDisplayValue('Intel')).toBeNull();
+      await userEvent.click(screen.getByRole('tab', { name: 'details_past' }));
+      await userEvent.click(screen.getByText('restore'));
+
+      // The last Past row going takes the tabs with it, back onto Current.
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.getByDisplayValue('Intel')).toBeDefined();
+
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+      expect(saved()[1]).toMatchObject({ id: 'detail-2', until: null, untilPrecision: null });
+    });
+
+    it('records a year on its own at year precision, and clears it again', async () => {
+      render(PersonDetailsModal, {
+        personId: 'person-1',
+        details: [detail('detail-1', 'Works at', 'Intel')],
+        onClose: vi.fn(),
+      });
+
+      const year = screen.getByLabelText('detail_date_year');
+      await userEvent.type(year, '2019');
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalledTimes(1));
+      expect(saved()[0]).toMatchObject({ since: '2019-01-01', sincePrecision: 'year' });
+
+      await userEvent.clear(year);
+      await userEvent.click(screen.getByText('save'));
+
+      await waitFor(() => expect(updatePersonDetails).toHaveBeenCalledTimes(2));
+      expect(vi.mocked(updatePersonDetails).mock.calls[1][0].personDetailsUpdateDto.details[0]).toMatchObject({
+        since: null,
+        sincePrecision: null,
+      });
+    });
+
+    it('refuses to save an Until before the Since', async () => {
+      const details = [
+        detail('detail-1', 'Hometown', 'Cork'),
+        {
+          ...detail('detail-2', 'Works at', 'Intel'),
+          until: '2018-01-01',
+          untilPrecision: PersonDetailDatePrecision.Year,
+        },
+      ];
+      render(PersonDetailsModal, { personId: 'person-1', details, onClose: vi.fn() });
+
+      await userEvent.click(screen.getByRole('tab', { name: 'details_past' }));
+      await userEvent.type(screen.getAllByLabelText('detail_date_year')[0], '2019');
+
+      expect(screen.getByText('detail_until_before_since')).toBeDefined();
+      expect((screen.getByText('save') as HTMLButtonElement).closest('button')!.disabled).toBe(true);
+    });
   });
 });

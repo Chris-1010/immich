@@ -1,8 +1,11 @@
 <script lang="ts">
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
+  import DetailDateInput from '$lib/components/faces-page/detail-date-input.svelte';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { sortPastDetails } from '$lib/utils/person-detail-dates';
   import {
+    PersonDetailDatePrecision,
     addPersonDetails,
     getPersonDetailConflicts,
     getPersonDetailKeys,
@@ -13,7 +16,7 @@
     type PersonDetailSuggestionResponseDto,
     type PersonResponseDto,
   } from '@immich/sdk';
-  import { Button, HStack, Icon, Input, Modal, ModalBody, ModalFooter, Text } from '@immich/ui';
+  import { Button, Checkbox, HStack, Icon, Input, Label, Modal, ModalBody, ModalFooter, Text } from '@immich/ui';
   import {
     mdiCheck,
     mdiClose,
@@ -23,6 +26,7 @@
     mdiSubdirectoryArrowRight,
     mdiTagOutline,
   } from '@mdi/js';
+  import { DateTime } from 'luxon';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
@@ -53,11 +57,23 @@
   /** One editable line, at either level. `id` is absent on something that does not exist yet. */
   type Field = { rowId: string; id?: string; key: string; value: string };
   /**
-   * Since and Until, carried through untouched. The whole list is saved at once, so a row sent back
-   * without them would come back Current and undated.
+   * Since and Until, always sent back. The whole list is saved at once, so a row sent back without
+   * them would come back Current and undated. Never undefined: a null `until` is what makes a row
+   * Current, and an undefined one would be taken for Past by everything that sorts the two apart.
    */
   type Dates = Pick<PersonDetailResponseDto, 'since' | 'sincePrecision' | 'until' | 'untilPrecision'>;
-  type Row = Field & { subdetails: Field[]; dates?: Dates };
+  type Row = Field &
+    Dates & {
+      subdetails: Field[];
+      /** What the row held when the modal opened, which is what a changed value is measured against. */
+      original?: { key: string; value: string };
+      /**
+       * Whether what this row replaces goes to Past rather than being overwritten. For a saved row,
+       * the old value once the value is changed; in bulk, every value the row is replacing.
+       * Ticked by default, since history is the thing that cannot be got back.
+       */
+      archive: boolean;
+    };
 
   /**
    * The key input of each line, so a line added by a button can be focused.
@@ -85,17 +101,44 @@
   const asRow = (detail?: PersonDetailResponseDto): Row => ({
     ...asField(detail),
     subdetails: (detail?.subdetails ?? []).map((sub) => asField(sub)),
-    dates: detail && {
-      since: detail.since,
-      sincePrecision: detail.sincePrecision,
-      until: detail.until,
-      untilPrecision: detail.untilPrecision,
-    },
+    since: detail?.since ?? null,
+    sincePrecision: detail?.sincePrecision ?? null,
+    until: detail?.until ?? null,
+    untilPrecision: detail?.untilPrecision ?? null,
+    original: detail && { key: detail.key, value: detail.value },
+    archive: true,
   });
 
   // A person with nothing recorded opens on an empty row rather than on a bare "+ Add detail":
   // pressing "Add details" already said what was wanted, and asking for it twice is a dead end.
   let rows = $state<Row[]>(details.length > 0 ? details.map((detail) => asRow(detail)) : [asRow()]);
+
+  /**
+   * Which half of the list is on show, as in the person's header. There is only Current until
+   * something has been ended, and a bulk add has no Past at all: it carries no dates.
+   */
+  let tab = $state<'current' | 'past'>('current');
+
+  /** In the order they were arranged in, which is the order they are saved in. */
+  const currentRows = $derived(rows.filter((row) => row.until === null));
+  /** Most recently ended first. Their manual order means nothing once they are history. */
+  const pastRows = $derived(sortPastDetails(rows));
+
+  // Read through here rather than from `tab`, so restoring the last Past row never leaves an empty
+  // Past tab drawn with no toggle left to leave it by.
+  const activeTab = $derived(!isBulk && pastRows.length > 0 ? tab : 'current');
+  const shownRows = $derived(activeTab === 'current' ? currentRows : pastRows);
+
+  const tabs = $derived([
+    { id: 'current' as const, label: $t('details_current') },
+    { id: 'past' as const, label: $t('details_past', { values: { count: pastRows.length } }) },
+  ]);
+
+  /**
+   * The first of this month: what End and an archive stamp as Until. Month precision, since "this
+   * month" is as much as anyone knows about a fact they are recording the end of just now.
+   */
+  const thisMonth = () => DateTime.now().startOf('month').toISODate()!;
 
   let draggingRowId = $state<string>();
   let activeField = $state<{ rowId: string; field: 'key' | 'value' }>();
@@ -296,6 +339,9 @@
     const row = asRow();
     rows = [...rows, row];
 
+    // A new detail is Current, so it is added where it can be seen.
+    tab = 'current';
+
     // Focusing has to wait for the row to exist in the DOM.
     requestAnimationFrame(() => keyInputs[row.rowId]?.focus());
   };
@@ -322,8 +368,17 @@
     delete keyInputs[rowId];
   };
 
-  const moveTo = (from: number, to: number) => {
-    if (from === -1 || to < 0 || to >= rows.length || from === to) {
+  /**
+   * Moves one row to where another is, by position in the whole list. Only Current rows are ever
+   * moved, but Past rows are interleaved with them in `rows`, so the target is named as a row
+   * rather than as a position on screen. Removing first and inserting at the target's old index
+   * lands the row after a target below it and before a target above it, which is a swap for
+   * neighbours whatever sits between them.
+   */
+  const moveTo = (fromRowId: string | undefined, toRowId: string | undefined) => {
+    const from = rows.findIndex(({ rowId }) => rowId === fromRowId);
+    const to = rows.findIndex(({ rowId }) => rowId === toRowId);
+    if (from === -1 || to === -1 || from === to) {
       return false;
     }
 
@@ -345,7 +400,7 @@
     }
   };
 
-  const handleDragOver = (event: DragEvent, index: number) => {
+  const handleDragOver = (event: DragEvent, row: Row) => {
     if (draggingRowId === undefined) {
       return;
     }
@@ -353,12 +408,10 @@
     // Without this the browser refuses the drop and animates the row back.
     event.preventDefault();
 
-    moveTo(
-      rows.findIndex(({ rowId }) => rowId === draggingRowId),
-      index,
-    );
+    moveTo(draggingRowId, row.rowId);
   };
 
+  /** `index` is the row's place among the Current rows on screen, which is what the arrows move through. */
   const handleMoveKey = (event: KeyboardEvent, index: number) => {
     const to = event.key === 'ArrowUp' ? index - 1 : event.key === 'ArrowDown' ? index + 1 : undefined;
     if (to === undefined) {
@@ -367,8 +420,42 @@
 
     // Keep the arrow keys from scrolling the modal out from under the row being moved.
     event.preventDefault();
-    moveTo(index, to);
+    moveTo(currentRows[index]?.rowId, currentRows[to]?.rowId);
   };
+
+  /** End: the fact stopped holding this month. Nothing replaces it, and it moves over to Past. */
+  const handleEnd = (row: Row) => {
+    row.until = thisMonth();
+    row.untilPrecision = PersonDetailDatePrecision.Month;
+  };
+
+  /** Restore: the fact holds again after all, so it goes back to Current with no end date. */
+  const handleRestore = (row: Row) => {
+    row.until = null;
+    row.untilPrecision = null;
+  };
+
+  /**
+   * A saved Current row whose value now says something else, which is a new fact rather than a
+   * correction often enough that keeping the old one is offered. Only the value counts: a changed
+   * key on its own is a relabel. Putting the value back the way it was withdraws the offer.
+   */
+  const changesValue = (row: Row) =>
+    !isBulk &&
+    row.id !== undefined &&
+    row.original !== undefined &&
+    row.until === null &&
+    row.value.trim() !== '' &&
+    row.value.trim() !== row.original.value.trim();
+
+  /**
+   * An Until before the Since is refused by the server, so it is caught here instead, where the
+   * row it is wrong on can be pointed at. Dates are compared as written, which is how the server
+   * compares them once it has snapped both to the start of their month or year.
+   */
+  const isBackwards = (row: Pick<Row, 'since' | 'until'>) => !!row.since && !!row.until && row.until < row.since;
+
+  const hasBackwards = $derived(!isBulk && rows.some((row) => isBackwards(row)));
 
   /** The keys typed so far, lowercased and deduplicated, which is what a conflict is asked about. */
   let typedKeys = $derived([
@@ -432,18 +519,66 @@
    * A row blank at either end is an unfinished "+ Add detail", not something to refuse a save over,
    * so it is dropped rather than reported.
    */
-  const asPayload = () =>
+  const asFields = ({ id, key, value, subdetails }: Row) => ({
+    id,
+    key: key.trim(),
+    value: value.trim(),
+    subdetails: subdetails
+      .map((sub) => ({ id: sub.id, key: sub.key.trim(), value: sub.value.trim() }))
+      .filter((sub) => sub.key && sub.value),
+  });
+
+  /**
+   * The whole list, dates and all.
+   *
+   * A row whose value was changed with "Move the old one to Past" ticked goes out as two: a new
+   * Current row where it stood, with the new value, no `id`, no dates and no subdetails; and the
+   * old row under its own `id`, with the key and value it opened with, ended this month, keeping
+   * every subdetail as it now reads, since those described the old fact rather than the new one.
+   * The `id` going out on the old row is what tells the server it was archived, not deleted.
+   */
+  const asUpdatePayload = () =>
     rows
-      .map(({ id, key, value, subdetails, dates }) => ({
-        ...dates,
-        id,
-        key: key.trim(),
-        value: value.trim(),
-        subdetails: subdetails
-          .map((sub) => ({ id: sub.id, key: sub.key.trim(), value: sub.value.trim() }))
-          .filter((sub) => sub.key && sub.value),
-      }))
+      .flatMap((row) => {
+        const fields = asFields(row);
+        const dates = {
+          since: row.since,
+          sincePrecision: row.sincePrecision,
+          until: row.until,
+          untilPrecision: row.untilPrecision,
+        };
+
+        if (!changesValue(row) || !row.archive || !row.original) {
+          return [{ ...fields, ...dates }];
+        }
+
+        return [
+          {
+            ...fields,
+            id: undefined,
+            subdetails: [],
+            since: null,
+            sincePrecision: null,
+            until: null,
+            untilPrecision: null,
+          },
+          {
+            ...fields,
+            ...dates,
+            key: row.original.key,
+            value: row.original.value,
+            until: thisMonth(),
+            untilPrecision: PersonDetailDatePrecision.Month,
+          },
+        ];
+      })
       .filter(({ key, value }) => key && value);
+
+  /** The people a bulk row overwrites rather than adds to, which only ever come from the conflicts shown. */
+  const asReplaced = (row: Pick<Row, 'key' | 'value'>) =>
+    (conflicts[row.key.trim().toLowerCase()] ?? [])
+      .filter((person) => !isSameValue(person, row.value) && isReplacing(row.key, person.id))
+      .map(({ id }) => id);
 
   const onsubmit = async (event: Event) => {
     event.preventDefault();
@@ -454,14 +589,20 @@
         await addPersonDetails({
           personDetailsBulkAddDto: {
             personIds: people.map(({ id }) => id),
-            details: asPayload().map((detail) => ({
-              ...detail,
-              // Only ever people shown as already holding the key, since that is the only place the
-              // choice can be made, and only where there is something different to overwrite.
-              replaceForPersonIds: (conflicts[detail.key.toLowerCase()] ?? [])
-                .filter((person) => !isSameValue(person, detail.value) && isReplacing(detail.key, person.id))
-                .map(({ id }) => id),
-            })),
+            // Bulk items carry no dates: what is added is Current, and the server ends whatever it
+            // replaces. Only ever people shown as already holding the key, since that is the only
+            // place the choice can be made, and only where there is something different to overwrite.
+            details: rows
+              .map((row) => {
+                const replaceForPersonIds = asReplaced(row);
+
+                return {
+                  ...asFields(row),
+                  replaceForPersonIds,
+                  ...(replaceForPersonIds.length > 0 && { archiveReplaced: row.archive }),
+                };
+              })
+              .filter(({ key, value }) => key && value),
           },
         });
 
@@ -473,7 +614,7 @@
 
       const saved = await updatePersonDetails({
         id: personId!,
-        personDetailsUpdateDto: { details: asPayload() },
+        personDetailsUpdateDto: { details: asUpdatePayload() },
       });
 
       onClose(saved);
@@ -493,29 +634,55 @@
 >
   <ModalBody>
     <form {onsubmit} autocomplete="off" id="person-details-form">
+      <!-- Only once there is history to switch to, styled as the toggle in the person's header. -->
+      {#if !isBulk && pastRows.length > 0}
+        <div role="tablist" aria-label={$t('person_details')} class="mt-2 flex gap-1 text-xs">
+          {#each tabs as option (option.id)}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === option.id}
+              class="rounded-full px-2.5 py-0.5 {activeTab === option.id
+                ? 'bg-subtle text-primary'
+                : 'text-gray-500 dark:text-gray-400 hover:text-primary'}"
+              onclick={() => (tab = option.id)}
+            >
+              {option.label}
+            </button>
+          {/each}
+        </div>
+      {/if}
+
       <div class="my-2 flex flex-col gap-2">
-        {#if rows.length === 0}
-          <Text size="small" color="muted">{$t('no_details_yet')}</Text>
+        {#if shownRows.length === 0}
+          <Text size="small" color="muted">{$t(pastRows.length > 0 ? 'details_none_current' : 'no_details_yet')}</Text>
         {/if}
 
-        {#each rows as row, index (row.rowId)}
+        {#each shownRows as row, index (row.rowId)}
+          {@const isPast = row.until !== null}
           <div
             class="flex flex-col gap-1 rounded-2xl p-1 {draggingRowId === row.rowId ? 'opacity-50' : ''}"
-            ondragover={(event) => handleDragOver(event, index)}
+            ondragover={(event) => handleDragOver(event, row)}
             role="listitem"
           >
             <div class="flex place-items-start gap-2">
-              <button
-                type="button"
-                class="mt-2 flex size-7 shrink-0 cursor-grab place-items-center justify-center rounded-full text-gray-500 dark:text-gray-400 hover:text-primary active:cursor-grabbing"
-                draggable="true"
-                aria-label={$t('detail_reorder')}
-                ondragstart={(event) => handleDragStart(event, row)}
-                ondragend={() => (draggingRowId = undefined)}
-                onkeydown={(event) => handleMoveKey(event, index)}
-              >
-                <Icon icon={mdiDragHorizontalVariant} size="1.25em" aria-hidden />
-              </button>
+              <!-- Past rows are ordered by when they ended, so there is nothing to drag. The space
+                   is kept, so keys line up across both tabs and with the subdetails below. -->
+              {#if isPast}
+                <span class="mt-2 size-7 shrink-0"></span>
+              {:else}
+                <button
+                  type="button"
+                  class="mt-2 flex size-7 shrink-0 cursor-grab place-items-center justify-center rounded-full text-gray-500 dark:text-gray-400 hover:text-primary active:cursor-grabbing"
+                  draggable="true"
+                  aria-label={$t('detail_reorder')}
+                  ondragstart={(event) => handleDragStart(event, row)}
+                  ondragend={() => (draggingRowId = undefined)}
+                  onkeydown={(event) => handleMoveKey(event, index)}
+                >
+                  <Icon icon={mdiDragHorizontalVariant} size="1.25em" aria-hidden />
+                </button>
+              {/if}
 
               <button
                 type="button"
@@ -562,6 +729,47 @@
                 <Icon icon={mdiClose} size="1.25em" aria-hidden />
               </button>
             </div>
+
+            <!-- When the fact held, and the way in or out of Past. Bulk rows have none of it: what
+                 is added to several people is Current and undated. -->
+            {#if !isBulk}
+              <div class="flex flex-wrap place-items-center gap-x-3 gap-y-1 ps-[4.5rem]">
+                <DetailDateInput
+                  label={$t('detail_since_label')}
+                  bind:date={row.since}
+                  bind:precision={row.sincePrecision}
+                  invalid={isBackwards(row)}
+                />
+
+                {#if isPast}
+                  <DetailDateInput
+                    label={$t('detail_until_label')}
+                    bind:date={row.until}
+                    bind:precision={row.untilPrecision}
+                    invalid={isBackwards(row)}
+                  />
+                {/if}
+
+                <button
+                  type="button"
+                  class="rounded-full px-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
+                  onclick={() => (isPast ? handleRestore(row) : handleEnd(row))}
+                >
+                  {$t(isPast ? 'restore' : 'detail_end')}
+                </button>
+
+                {#if changesValue(row)}
+                  <span class="flex place-items-center gap-1">
+                    <Checkbox id="archive-{row.rowId}" size="tiny" bind:checked={row.archive} />
+                    <Label class="text-xs" label={$t('detail_archive_old')} for="archive-{row.rowId}" />
+                  </span>
+                {/if}
+
+                {#if isBackwards(row)}
+                  <span class="w-full text-xs text-danger" role="alert">{$t('detail_until_before_since')}</span>
+                {/if}
+              </div>
+            {/if}
 
             <!-- Indented by exactly the two fixed-size buttons above and the gaps around them, so a
                  subdetail key starts where the detail key it hangs from starts. -->
@@ -647,6 +855,15 @@
                     </span>
                   </button>
                 {/each}
+
+                <!-- Only once someone is being overwritten, since appending leaves nothing behind
+                     to keep. Applies to everyone this row replaces. -->
+                {#if asReplaced(row).length > 0}
+                  <span class="flex place-items-center gap-1">
+                    <Checkbox id="archive-{row.rowId}" size="tiny" bind:checked={row.archive} />
+                    <Label class="text-xs" label={$t('detail_archive_old_bulk')} for="archive-{row.rowId}" />
+                  </span>
+                {/if}
               </div>
             {/if}
           </div>
@@ -689,7 +906,7 @@
   <ModalFooter>
     <HStack fullWidth>
       <Button shape="round" color="secondary" fullWidth onclick={() => onClose()}>{$t('cancel')}</Button>
-      <Button shape="round" type="submit" fullWidth form="person-details-form" disabled={isSaving}>
+      <Button shape="round" type="submit" fullWidth form="person-details-form" disabled={isSaving || hasBackwards}>
         {$t(isBulk ? 'apply' : 'save')}
       </Button>
     </HStack>
