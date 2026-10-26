@@ -75,6 +75,10 @@ const search = async (query: string) => {
   await screen.findByText('Office', undefined, { timeout: 3000 });
 };
 
+const drawerHandle = () => screen.getByRole('button', { name: /saved_locations/ });
+
+const openDrawer = () => userEvent.click(drawerHandle());
+
 // The real map pulls in maplibre, which has no canvas to draw on here and is beside the point.
 vi.mock('$lib/components/shared-components/map/map.svelte', () => ({
   default: () => ({ addClipMapMarker: () => {} }),
@@ -134,6 +138,7 @@ describe('ChangeLocation', () => {
     const onClose = vi.fn();
     render(ChangeLocation, { pointOnly: true, onClose });
 
+    await openDrawer();
     await userEvent.click(await screen.findByText('Rathmines'));
     await userEvent.click(screen.getByText('confirm'));
 

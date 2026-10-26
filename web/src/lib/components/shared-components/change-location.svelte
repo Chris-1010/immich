@@ -39,10 +39,18 @@
     type RelationshipGender,
   } from '@immich/sdk';
   import { Button, HStack, Icon, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
-  import { mdiBookmarkOutline, mdiMapMarkerMultipleOutline, mdiMapMarkerOffOutline, mdiTrashCanOutline } from '@mdi/js';
+  import {
+    mdiBookmarkOutline,
+    mdiChevronLeft,
+    mdiChevronRight,
+    mdiMapMarkerMultipleOutline,
+    mdiMapMarkerOffOutline,
+    mdiTrashCanOutline,
+  } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { slide } from 'svelte/transition';
 
   interface Props {
     asset?: AssetResponseDto | undefined;
@@ -100,6 +108,39 @@
   let saveNameInput = $state('');
   let savedFilter = $state('');
   let pickedName: string | undefined = $state();
+
+  // The saved-locations drawer is for browsing and managing the list (picking mostly happens through
+  // search), so it starts closed and the map gets the full width. Whether it was left open is kept per
+  // browser. Storage can be missing or refuse access (private windows, blocked site data), in which
+  // case the drawer simply opens closed and stops remembering.
+  const DRAWER_OPEN_KEY = 'immich_saved_locations_drawer_open';
+
+  const readDrawerOpen = () => {
+    try {
+      return localStorage.getItem(DRAWER_OPEN_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  };
+
+  let drawerOpen = $state(readDrawerOpen());
+
+  const setDrawerOpen = (open: boolean) => {
+    drawerOpen = open;
+    try {
+      localStorage.setItem(DRAWER_OPEN_KEY, String(open));
+    } catch {
+      // Not remembered this time; the drawer itself still opens and closes.
+    }
+  };
+
+  // The slide is decoration: anyone who has asked their system for less motion gets a drawer that
+  // simply appears and disappears.
+  const drawerSlide = (node: Element) =>
+    slide(node, {
+      axis: 'x',
+      duration: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 200,
+    });
 
   // A single asset already marked No Location offers "Unassign Location"; otherwise (including bulk
   // mode, where no single asset is passed) the action marks the selection No Location.
@@ -272,7 +313,7 @@
 
 <Modal title={$t('change_location')} icon={mdiMapMarkerMultipleOutline} size="large" onClose={() => onClose()}>
   <ModalBody>
-    <div class="flex w-full flex-col gap-4 sm:flex-row">
+    <div class="relative flex w-full gap-2">
       <!-- Left: picker -->
       <div class="flex min-w-0 flex-1 flex-col gap-2">
         <div class="relative w-full z-1">
@@ -377,88 +418,114 @@
         </div>
       </div>
 
-      <!-- Right: saved locations sidebar -->
-      <div
-        class="flex w-full shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:w-56 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0 dark:border-gray-700"
+      <!-- Right edge: the handle that opens the saved-locations drawer. It sits against the drawer, so it
+           marks the map's edge while closed and the drawer's edge while open. -->
+      <button
+        type="button"
+        class="flex w-8 shrink-0 flex-col items-center gap-2 rounded-lg border border-gray-200 py-3 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 hover:dark:bg-gray-700"
+        aria-expanded={drawerOpen}
+        aria-controls="saved-locations-drawer"
+        onclick={() => setDrawerOpen(!drawerOpen)}
       >
-        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {$t('saved_locations')}
-        </p>
-
+        <Icon icon={drawerOpen ? mdiChevronRight : mdiChevronLeft} size="1.25em" aria-hidden />
+        <Icon icon={mdiBookmarkOutline} size="1.25em" class="text-primary" aria-hidden />
+        <span class="sr-only">{$t('saved_locations')}</span>
         {#if $savedLocations.length > 0}
-          <input
-            type="text"
-            bind:value={savedFilter}
-            placeholder={$t('filter_places')}
-            class="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-          />
+          <span class="rounded-full bg-primary px-1.5 text-xs font-semibold text-light">{$savedLocations.length}</span>
         {/if}
+      </button>
 
-        <div class="flex flex-col gap-1 overflow-y-auto max-h-40 sm:max-h-none sm:flex-1">
-          {#if $savedLocations.length === 0}
-            <p class="text-sm text-gray-400 dark:text-gray-500">{$t('no_saved_locations')}</p>
-          {:else}
-            {#each $savedLocations.filter((loc) => loc.name
-                .toLowerCase()
-                .includes(savedFilter.toLowerCase())) as loc (loc.id)}
-              <div class="flex items-center gap-1">
-                <button
-                  type="button"
-                  class="flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 hover:dark:bg-gray-700"
-                  onclick={() => handleUseSuggested(loc.latitude, loc.longitude, undefined, loc.name)}
-                >
-                  {loc.name}
-                </button>
-                <IconButton
-                  icon={mdiTrashCanOutline}
-                  size="small"
-                  color="secondary"
-                  aria-label={$t('delete')}
-                  onclick={() => handleRemoveSavedLocation(loc.id)}
-                />
-              </div>
-            {/each}
-          {/if}
-        </div>
+      <!-- Saved-locations drawer. The content is laid out at its final width and positioned absolutely,
+           so the slide clips it rather than reflowing it, and a long list scrolls inside the drawer
+           instead of stretching the modal past the map. -->
+      {#if drawerOpen}
+        <aside
+          id="saved-locations-drawer"
+          aria-label={$t('saved_locations')}
+          class="relative w-56 shrink-0 overflow-hidden"
+          transition:drawerSlide
+        >
+          <div class="absolute inset-y-0 end-0 flex w-56 flex-col gap-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {$t('saved_locations')}
+            </p>
 
-        {#if point}
-          <div class="flex flex-col gap-2 border-t border-gray-200 pt-2 dark:border-gray-700">
-            {#if showSaveInput}
+            {#if $savedLocations.length > 0}
               <input
                 type="text"
-                bind:value={saveNameInput}
-                placeholder={$t('place_name')}
-                class="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                bind:value={savedFilter}
+                placeholder={$t('filter_places')}
+                class="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-1.5 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
               />
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  class="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 hover:dark:bg-gray-700"
-                  onclick={() => (showSaveInput = false)}
-                >
-                  {$t('cancel')}
-                </button>
-                <button
-                  type="button"
-                  class="flex-1 rounded-lg bg-immich-primary px-3 py-1.5 text-sm text-white disabled:opacity-50"
-                  disabled={!saveNameInput.trim()}
-                  onclick={handleSaveLocation}
-                >
-                  {$t('save')}
-                </button>
+            {/if}
+
+            <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+              {#if $savedLocations.length === 0}
+                <p class="text-sm text-gray-400 dark:text-gray-500">{$t('no_saved_locations')}</p>
+              {:else}
+                {#each $savedLocations.filter((loc) => loc.name
+                    .toLowerCase()
+                    .includes(savedFilter.toLowerCase())) as loc (loc.id)}
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="flex-1 truncate rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 hover:dark:bg-gray-700"
+                      onclick={() => handleUseSuggested(loc.latitude, loc.longitude, undefined, loc.name)}
+                    >
+                      {loc.name}
+                    </button>
+                    <IconButton
+                      icon={mdiTrashCanOutline}
+                      size="small"
+                      color="secondary"
+                      aria-label={$t('delete')}
+                      onclick={() => handleRemoveSavedLocation(loc.id)}
+                    />
+                  </div>
+                {/each}
+              {/if}
+            </div>
+
+            {#if point}
+              <div class="flex flex-col gap-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+                {#if showSaveInput}
+                  <input
+                    type="text"
+                    bind:value={saveNameInput}
+                    placeholder={$t('place_name')}
+                    class="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  />
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      class="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 hover:dark:bg-gray-700"
+                      onclick={() => (showSaveInput = false)}
+                    >
+                      {$t('cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      class="flex-1 rounded-lg bg-immich-primary px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                      disabled={!saveNameInput.trim()}
+                      onclick={handleSaveLocation}
+                    >
+                      {$t('save')}
+                    </button>
+                  </div>
+                {:else}
+                  <button
+                    type="button"
+                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 hover:dark:bg-gray-700"
+                    onclick={handleOpenSaveInput}
+                  >
+                    + {$t('save_location')}
+                  </button>
+                {/if}
               </div>
-            {:else}
-              <button
-                type="button"
-                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 hover:dark:bg-gray-700"
-                onclick={handleOpenSaveInput}
-              >
-                + {$t('save_location')}
-              </button>
             {/if}
           </div>
-        {/if}
-      </div>
+        </aside>
+      {/if}
     </div>
   </ModalBody>
 
