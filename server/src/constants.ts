@@ -169,6 +169,8 @@ export const endpointTags: Record<ApiTag, string> = {
     'Queues and background jobs are used for processing tasks asynchronously. Queues can be paused and resumed as needed.',
   [ApiTag.Relationships]:
     "A relationship is a directed link between two people, carrying exactly one relationship type. It is stored once and read from both ends: the subject sees the counterpart labelled with the type, and the counterpart sees the subject labelled with that type's inverse. Every type has an inverse, and a type whose inverse is itself is symmetric.",
+  [ApiTag.SavedLocations]:
+    'A saved location is a named pin kept for the location picker, such as "Gran\'s house", so a place can be found again by name. The picker\'s search also offers the pinned Home and Work contact fields of the user\'s people, current ones ahead of past ones, followed by GeoNames places.',
   [ApiTag.Search]:
     'Endpoints related to searching assets via text, smart search, optical character recognition (OCR), and other filters like person, album, and other metadata. Search endpoints usually support pagination and sorting.',
   [ApiTag.Server]:

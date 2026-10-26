@@ -207,6 +207,11 @@ export enum Permission {
   PersonDetailRead = 'personDetail.read',
   PersonDetailUpdate = 'personDetail.update',
 
+  SavedLocationCreate = 'savedLocation.create',
+  SavedLocationRead = 'savedLocation.read',
+  SavedLocationUpdate = 'savedLocation.update',
+  SavedLocationDelete = 'savedLocation.delete',
+
   ServerAbout = 'server.about',
   ServerApkLinks = 'server.apkLinks',
   ServerStorage = 'server.storage',
@@ -869,6 +874,7 @@ export enum ApiTag {
   Plugins = 'Plugins',
   Queues = 'Queues',
   Relationships = 'Relationships',
+  SavedLocations = 'SavedLocations',
   Search = 'Search',
   Server = 'Server',
   Sessions = 'Sessions',
@@ -916,4 +922,14 @@ export enum PersonDetailKind {
   Home = 'home',
   Email = 'email',
   Phone = 'phone',
+}
+
+/** Which of the location picker's three sources a search result came from. */
+export enum LocationSearchResultType {
+  /** A pin the owner saved and named themselves. */
+  Saved = 'saved',
+  /** A pinned Home or Work contact field on one of the owner's people. */
+  Person = 'person',
+  /** A GeoNames place from the reverse-geocoding data. */
+  Place = 'place',
 }
