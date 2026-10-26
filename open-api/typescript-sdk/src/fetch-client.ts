@@ -945,11 +945,15 @@ export type AlongWithPersonResponseDto = {
     is what marks them out from the rest of the alumni. */
     sharedSubdetails: PersonDetailPairResponseDto[];
 };
-export type AlongWithResponseDto = {
+export type AlongWithGroupResponseDto = {
     people: AlongWithPersonResponseDto[];
     /** The size of the whole group, which is larger than `people` once the cap is reached. The count
     behind a `+N` is this, not the length of the list. */
     total: number;
+};
+export type AlongWithResponseDto = {
+    current: AlongWithGroupResponseDto;
+    past: AlongWithGroupResponseDto;
 };
 export type PersonSubdetailResponseDto = {
     id: string;
@@ -963,8 +967,14 @@ export type PersonDetailResponseDto = {
     createdAt: string;
     id: string;
     key: string;
+    /** When the fact became true, snapped to the start of its year or month. Null when unknown. */
+    since: string | null;
+    sincePrecision: (PersonDetailDatePrecision) | null;
     sortOrder: number;
     subdetails: PersonSubdetailResponseDto[];
+    /** When the fact stopped being true. Null means Current, set means Past. */
+    until: string | null;
+    untilPrecision: (PersonDetailDatePrecision) | null;
     value: string;
 };
 export type PersonSubdetailUpsertDto = {
@@ -977,9 +987,20 @@ export type PersonDetailUpsertDto = {
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
+    /** When the fact became true, as a full date. Snapped on write to the first day of the year or
+    month named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored. */
+    since?: string | null;
+    /** Defaults to month when `since` is given without one. */
+    sincePrecision?: (PersonDetailDatePrecision) | null;
     /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
     one level deep, which is why these carry no subdetails of their own. */
     subdetails?: PersonSubdetailUpsertDto[];
+    /** When the fact stopped being true. Set means Past, absent or null means Current — this is how a
+    whole-list save archives a row: the old row is sent back with `until` set, alongside a new row
+    without an id for the value that replaced it. */
+    until?: string | null;
+    /** Defaults to month when `until` is given without one. */
+    untilPrecision?: (PersonDetailDatePrecision) | null;
     value: string;
 };
 export type PersonDetailsUpdateDto = {
@@ -1001,11 +1022,15 @@ export type PersonStatisticsResponseDto = {
     assets: number;
 };
 export type PersonDetailBulkItemDto = {
+    /** How a replacement treats the value it replaces. True (the default) moves it to Past — `until`
+    set to this month, subdetails kept with it — and adds the new value as a fresh Current row.
+    False overwrites it in place, which loses the old value. */
+    archiveReplaced?: boolean;
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
     /** Who among the people named by the request should have their existing value under this key
-    overwritten rather than gaining a second row. Everyone else keeps what they had. */
+    replaced rather than gaining a second row. Everyone else keeps what they had. */
     replaceForPersonIds?: string[];
     /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
     one level deep, which is why these carry no subdetails of their own. */
@@ -5890,6 +5915,10 @@ export enum MemoryType {
 export enum PartnerDirection {
     SharedBy = "shared-by",
     SharedWith = "shared-with"
+}
+export enum PersonDetailDatePrecision {
+    Year = "year",
+    Month = "month"
 }
 export enum PluginContext {
     Asset = "asset",

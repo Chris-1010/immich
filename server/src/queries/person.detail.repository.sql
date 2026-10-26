@@ -7,7 +7,11 @@ select
   "key",
   "value",
   "sortOrder",
-  "createdAt"
+  "createdAt",
+  "since",
+  "sincePrecision",
+  "until",
+  "untilPrecision"
 from
   "person_detail"
 where
@@ -24,7 +28,13 @@ with
       lower(detail."value") as "value",
       "detail"."id" as "detailId",
       "person"."id" as "personId",
-      "person"."name" as "name"
+      "person"."name" as "name",
+      bool_or(detail."until" is null) over (
+        partition by
+          lower(detail."key"),
+          lower(detail."value"),
+          person.id
+      ) as "isCurrent"
     from
       "person_detail" as "detail"
       inner join "person" on "person"."id" = "detail"."personId"
@@ -90,6 +100,7 @@ with
       "matched"."value" as "value",
       "matched"."personId" as "personId",
       "matched"."name" as "name",
+      "matched"."isCurrent" as "isCurrent",
       coalesce("overlapCounts"."subShared", 0) as "subShared",
       coalesce("overlapCounts"."subKeys", '{}') as "subKeys",
       coalesce("overlapCounts"."subValues", '{}') as "subValues"
@@ -122,7 +133,8 @@ with
       row_number() over (
         partition by
           "key",
-          "value"
+          "value",
+          "isCurrent"
         order by
           "subShared" desc,
           "shared" desc,
@@ -132,7 +144,8 @@ with
       count(*) over (
         partition by
           "key",
-          "value"
+          "value",
+          "isCurrent"
       ) as "total"
     from
       "scored"
@@ -146,6 +159,7 @@ where
 order by
   "key",
   "value",
+  "isCurrent" desc,
   "rank"
 
 -- PersonDetailRepository.getKeySuggestions
@@ -253,6 +267,7 @@ where
   "detail"."ownerId" = $1
   and "detail"."personId" in ($2)
   and "detail"."parentId" is null
+  and "detail"."until" is null
   and lower(detail."key") in ($3)
 order by
   lower(detail."key"),

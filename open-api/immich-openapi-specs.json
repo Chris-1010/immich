@@ -16014,6 +16014,25 @@
         },
         "type": "object"
       },
+      "AlongWithGroupResponseDto": {
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/AlongWithPersonResponseDto"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "The size of the whole group, which is larger than `people` once the cap is reached. The count\nbehind a `+N` is this, not the length of the list.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "people",
+          "total"
+        ],
+        "type": "object"
+      },
       "AlongWithPersonResponseDto": {
         "properties": {
           "id": {
@@ -16047,20 +16066,16 @@
       },
       "AlongWithResponseDto": {
         "properties": {
-          "people": {
-            "items": {
-              "$ref": "#/components/schemas/AlongWithPersonResponseDto"
-            },
-            "type": "array"
+          "current": {
+            "$ref": "#/components/schemas/AlongWithGroupResponseDto"
           },
-          "total": {
-            "description": "The size of the whole group, which is larger than `people` once the cap is reached. The count\nbehind a `+N` is this, not the length of the list.",
-            "type": "integer"
+          "past": {
+            "$ref": "#/components/schemas/AlongWithGroupResponseDto"
           }
         },
         "required": [
-          "people",
-          "total"
+          "current",
+          "past"
         ],
         "type": "object"
       },
@@ -19248,6 +19263,11 @@
       },
       "PersonDetailBulkItemDto": {
         "properties": {
+          "archiveReplaced": {
+            "default": true,
+            "description": "How a replacement treats the value it replaces. True (the default) moves it to Past — `until`\nset to this month, subdetails kept with it — and adds the new value as a fresh Current row.\nFalse overwrites it in place, which loses the old value.",
+            "type": "boolean"
+          },
           "id": {
             "description": "The row being edited. Absent on a subdetail that does not exist yet.",
             "format": "uuid",
@@ -19258,7 +19278,7 @@
             "type": "string"
           },
           "replaceForPersonIds": {
-            "description": "Who among the people named by the request should have their existing value under this key\noverwritten rather than gaining a second row. Everyone else keeps what they had.",
+            "description": "Who among the people named by the request should have their existing value under this key\nreplaced rather than gaining a second row. Everyone else keeps what they had.",
             "items": {
               "format": "uuid",
               "type": "string"
@@ -19346,6 +19366,13 @@
         ],
         "type": "object"
       },
+      "PersonDetailDatePrecision": {
+        "enum": [
+          "year",
+          "month"
+        ],
+        "type": "string"
+      },
       "PersonDetailPairResponseDto": {
         "properties": {
           "key": {
@@ -19377,6 +19404,20 @@
           "key": {
             "type": "string"
           },
+          "since": {
+            "description": "When the fact became true, snapped to the start of its year or month. Null when unknown.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "sincePrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
+          },
           "sortOrder": {
             "type": "integer"
           },
@@ -19385,6 +19426,20 @@
               "$ref": "#/components/schemas/PersonSubdetailResponseDto"
             },
             "type": "array"
+          },
+          "until": {
+            "description": "When the fact stopped being true. Null means Current, set means Past.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "untilPrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
           },
           "value": {
             "type": "string"
@@ -19395,8 +19450,12 @@
           "createdAt",
           "id",
           "key",
+          "since",
+          "sincePrecision",
           "sortOrder",
           "subdetails",
+          "until",
+          "untilPrecision",
           "value"
         ],
         "type": "object"
@@ -19427,12 +19486,42 @@
             "maxLength": 1000,
             "type": "string"
           },
+          "since": {
+            "description": "When the fact became true, as a full date. Snapped on write to the first day of the year or\nmonth named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "sincePrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "description": "Defaults to month when `since` is given without one.",
+            "nullable": true
+          },
           "subdetails": {
             "description": "What qualifies this detail rather than the person: \"Class of\" and \"2016\" under a school. Only\none level deep, which is why these carry no subdetails of their own.",
             "items": {
               "$ref": "#/components/schemas/PersonSubdetailUpsertDto"
             },
             "type": "array"
+          },
+          "until": {
+            "description": "When the fact stopped being true. Set means Past, absent or null means Current — this is how a\nwhole-list save archives a row: the old row is sent back with `until` set, alongside a new row\nwithout an id for the value that replaced it.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "untilPrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "description": "Defaults to month when `until` is given without one.",
+            "nullable": true
           },
           "value": {
             "maxLength": 1000,
