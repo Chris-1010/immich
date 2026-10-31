@@ -10,6 +10,7 @@
   import { setPersonPageContext } from '$lib/components/faces-page/person-page-context';
   import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
   import PersonDetailsBox from '$lib/components/faces-page/person-details-box.svelte';
+  import PersonHeaderCarousel from '$lib/components/faces-page/person-header-carousel.svelte';
   import { AppRoute, PersonPageViewMode, QueryParameter, SessionStorageKey } from '$lib/constants';
   import ContactFieldModal from '$lib/modals/ContactFieldModal.svelte';
   import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
@@ -347,7 +348,11 @@
     <!-- The details box is a sibling of the name block, not a child of it: the block cancels name
          editing on any click outside itself and on Escape, and nesting the box inside would hand
          those clicks and that Escape to the name editor instead of to the box and its popover. -->
-    <div class="flex w-full shrink-0 flex-col sm:flex-row sm:place-items-stretch">
+    <!-- Positioned for the carousel but deliberately without a z-index or isolate: its negative layer
+         resolves against main, and a stacking context here would trap the popovers and name
+         suggestions beneath the tabs and timeline that follow. -->
+    <div class="relative flex w-full shrink-0 flex-col sm:flex-row sm:place-items-stretch">
+      <PersonHeaderCarousel personId={person.id} assetCount={numberOfAssets} />
       <div
         class="relative w-fit shrink-0 p-4 sm:px-6 pt-12"
         use:clickOutside={{
