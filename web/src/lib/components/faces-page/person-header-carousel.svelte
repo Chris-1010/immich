@@ -67,7 +67,8 @@
 </script>
 
 <!-- Forced left-to-right because the loop's -50% only meets its own start from that side. The scrim
-     is the page's own background, so it blends in while the photos themselves fade up. -->
+     is the page's own background, solid at both edges so the band blends into the page above and
+     below it and the photos show strongest through the vertical middle. -->
 {#if isVisible}
   <div
     class="pointer-events-none absolute -inset-x-2 inset-y-0 -z-1 overflow-hidden select-none md:-inset-x-6"
@@ -89,7 +90,7 @@
         />
       {/each}
     </div>
-    <div class="absolute inset-0 bg-linear-to-b from-light/75 to-light"></div>
+    <div class="absolute inset-0 bg-linear-to-b from-light via-light/75 to-light"></div>
   </div>
 {/if}
 
