@@ -22,11 +22,21 @@ import app.alextran.immich.sync.NativeSyncApiImpl26
 import app.alextran.immich.sync.NativeSyncApiImpl30
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
     registerPlugins(this, flutterEngine)
+
+    // Activity-only (not registered for background engines): lets the share
+    // upload page hand the user back to the app they shared from.
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "immich/app_task").setMethodCallHandler { call, result ->
+      when (call.method) {
+        "moveToBack" -> result.success(moveTaskToBack(true))
+        else -> result.notImplemented()
+      }
+    }
   }
 
   companion object {

@@ -174,6 +174,30 @@ class UploadRepository {
       'duration': '0',
     };
 
+    return uploadFileWithRetry(
+      file: file,
+      originalFileName: originalFileName,
+      fields: fields,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+      logContext: 'editedImage',
+      maxAttempts: maxAttempts,
+    );
+  }
+
+  /// [uploadFile] with automatic retries for transient failures (see
+  /// [_shouldRetryUpload]), backing off one extra second per attempt. Each
+  /// attempt re-sends the whole file because the server has no resumable
+  /// upload endpoint.
+  Future<UploadResult> uploadFileWithRetry({
+    required File file,
+    required String originalFileName,
+    required Map<String, String> fields,
+    required Completer<void>? cancelToken,
+    void Function(int bytes, int totalBytes)? onProgress,
+    required String logContext,
+    int maxAttempts = 3,
+  }) async {
     UploadResult result = UploadResult.error(errorMessage: 'Upload not attempted');
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       result = await uploadFile(
@@ -182,14 +206,14 @@ class UploadRepository {
         fields: fields,
         cancelToken: cancelToken,
         onProgress: onProgress,
-        logContext: 'editedImage (attempt $attempt/$maxAttempts)',
+        logContext: '$logContext (attempt $attempt/$maxAttempts)',
       );
 
       if (!_shouldRetryUpload(result) || attempt == maxAttempts) {
         return result;
       }
 
-      logger.warning('Edited image upload attempt $attempt failed, retrying: ${result.errorMessage}');
+      logger.warning('Upload $logContext attempt $attempt failed, retrying: ${result.errorMessage}');
       await Future.delayed(Duration(seconds: attempt));
     }
     return result;
