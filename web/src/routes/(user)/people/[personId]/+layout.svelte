@@ -141,7 +141,8 @@
   /**
    * "Set pin" on a Home or Work row: the asset location picker in its point mode, opened on the
    * row's pin when it has one. Only coordinates come back from it, so a blank row is named here, and
-   * the editor fills the value from that name only while the value is still blank.
+   * the editor fills the value from that name only while the value is still blank, falling back to
+   * the address if the value is cleared again.
    */
   const handleSetPin = async (row: ContactFieldRow): Promise<ContactFieldPin | undefined> => {
     const point =
@@ -152,9 +153,11 @@
     }
 
     const { lat: latitude, lng: longitude } = result.point;
-    // Typed text wins anyway, so a lookup it would only be thrown away for is skipped.
-    const name = row.value.trim() ? undefined : await resolvePinName(latitude, longitude, result.name);
-    return { latitude, longitude, name };
+    // The address is looked up even when a saved location or search result was picked, so a value
+    // cleared of that name still saves under where the pin is rather than being dropped.
+    const address = await resolvePinName(latitude, longitude);
+    const name = row.value.trim() ? undefined : result.name?.trim() || address;
+    return { latitude, longitude, name, address };
   };
 
   /** A chip's way into its editor. Each kind is edited on its own, apart from the free-text list. */

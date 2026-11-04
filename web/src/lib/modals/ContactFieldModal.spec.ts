@@ -283,6 +283,22 @@ describe('ContactFieldModal', () => {
     expect(saved()).toEqual([expect.objectContaining({ value: 'Granny flat', latitude: 1, longitude: 2 })]);
   });
 
+  it("saves a pin's address when the picked name is cleared, rather than dropping the row", async () => {
+    const onSetPin = vi
+      .fn()
+      .mockResolvedValue({ latitude: 1, longitude: 2, name: "Granny's", address: 'Dublin, Ireland' });
+    render(ContactFieldModal, { personId: 'p', kind: PersonDetailKind.Home, details: [], onSetPin, onClose: vi.fn() });
+
+    await userEvent.click(screen.getByText('contact_field_set_pin'));
+    expect(screen.getByLabelText('contact_field_home')).toHaveValue("Granny's");
+
+    await userEvent.clear(screen.getByLabelText('contact_field_home'));
+    await userEvent.click(screen.getByText('save'));
+
+    await waitFor(() => expect(updatePersonDetails).toHaveBeenCalled());
+    expect(saved()).toEqual([expect.objectContaining({ value: 'Dublin, Ireland', latitude: 1, longitude: 2 })]);
+  });
+
   it('offers no pin on Email or Phone', () => {
     render(ContactFieldModal, {
       personId: 'p',

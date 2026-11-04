@@ -142,7 +142,8 @@
   /**
    * The seam for pins. The picker is the caller's, so this only applies what it hands back: the
    * coordinates, and its name as the value when the value is still blank — a pin dropped for a home
-   * with no name yet is still better named after where it was dropped than left empty.
+   * with no name yet is still better named after where it was dropped than left empty. Its address
+   * is kept too, for a value cleared again before Save.
    */
   const handleSetPin = async (row: ContactFieldRow) => {
     const pin = await onSetPin?.(row);
@@ -152,6 +153,7 @@
 
     row.latitude = pin.latitude;
     row.longitude = pin.longitude;
+    row.pinAddress = pin.address;
     if (!row.value.trim() && pin.name) {
       row.value = pin.name;
     }
@@ -160,6 +162,7 @@
   const handleRemovePin = (row: ContactFieldRow) => {
     row.latitude = null;
     row.longitude = null;
+    row.pinAddress = undefined;
   };
 
   /** Caught here rather than by the server, so the row it is wrong on can be pointed at. */

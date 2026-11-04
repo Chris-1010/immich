@@ -106,10 +106,19 @@ export type ContactFieldRow = {
    * default, as in the details modal, since history is the thing that cannot be got back.
    */
   archive: boolean;
+  /**
+   * The looked-up address of a pin set in this sitting. A row cleared after its pin filled it in is
+   * saved under this rather than dropped, so clearing a saved location's name falls back to the
+   * address, the same as a pin dropped anywhere else.
+   */
+  pinAddress?: string;
 };
 
-/** Where a pin was put, and the name of whatever was picked to put it there, when there was one. */
-export type ContactFieldPin = { latitude: number; longitude: number; name?: string };
+/**
+ * Where a pin was put, the name of whatever was picked to put it there, when there was one, and the
+ * address the coordinates resolve to regardless of what was picked.
+ */
+export type ContactFieldPin = { latitude: number; longitude: number; name?: string; address?: string };
 
 /**
  * What a new pin is called, for filling a blank value. The saved location or search result the
@@ -152,7 +161,7 @@ export const changesValue = (row: ContactFieldRow) =>
  * a pin set alongside the new value is for the new place; one left alone belongs to the old.
  */
 const asKindDetails = (row: ContactFieldRow, kind: PersonDetailKind, key: string): PersonDetailUpsertDto[] => {
-  const value = row.value.trim();
+  const value = rowValue(row);
   const fields: PersonDetailUpsertDto = {
     id: row.source?.id,
     key: row.source?.key ?? key,
@@ -198,6 +207,18 @@ const asKindDetails = (row: ContactFieldRow, kind: PersonDetailKind, key: string
 };
 
 /**
+ * What a row saves as: its text, or for a row left blank with a pin set in this sitting, the pin's
+ * address. A blank row with neither is unfinished.
+ */
+const rowValue = (row: ContactFieldRow) => {
+  const value = row.value.trim();
+  if (value || row.latitude === null || row.longitude === null) {
+    return value;
+  }
+  return row.pinAddress?.trim() ?? '';
+};
+
+/**
  * The person's whole list with one kind's Current rows swapped for what the editor holds.
  *
  * Everything else goes back exactly as it came, Past rows of the same kind included. The edited
@@ -211,7 +232,7 @@ export const asContactFieldPayload = (
   rows: ContactFieldRow[],
   key: string,
 ): PersonDetailUpsertDto[] => {
-  const edited = rows.filter((row) => row.value.trim() !== '').flatMap((row) => asKindDetails(row, kind, key));
+  const edited = rows.filter((row) => rowValue(row) !== '').flatMap((row) => asKindDetails(row, kind, key));
 
   const payload: PersonDetailUpsertDto[] = [];
   let placed = false;
