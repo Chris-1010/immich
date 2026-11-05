@@ -4,7 +4,12 @@ This is a personal fork of [Immich](https://github.com/immich-app/immich), based
 
 ## Added features
 
-- **Saved locations in the location picker** — pin frequently used places for quick reuse when setting an asset's location.
+- **Reworked location picker**:
+  - **Saved locations** are stored on the server for each user. Old browser-stored ones are moved there automatically.
+  - A **drawer** lists them, where they can be renamed or deleted. It shows as a sheet on phones.
+  - **One search** covers saved locations, people's Home/Work places (current and past) and map places.
+  - **Google Places results** come from a separate `places-proxy` service that sits in front of Immich on port 2283. Port 2284 skips the proxy and gives Immich's own GeoNames results.
+  - A **pick-a-point mode** is used to pin a person's Home or Work.
 - **"No Location" asset state and no-GPS filter** — mark and filter assets that have no GPS data.
 - **Date Added / Date Captured sort toggle** in location management.
 - **Timeline filters follow the selection** — toggling a timeline filter scrolls the view to keep the current selection in sight.
