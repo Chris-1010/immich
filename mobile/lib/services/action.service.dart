@@ -18,10 +18,12 @@ import 'package:immich_mobile/repositories/asset_api.repository.dart';
 import 'package:immich_mobile/repositories/asset_media.repository.dart';
 import 'package:immich_mobile/repositories/download.repository.dart';
 import 'package:immich_mobile/repositories/drift_album_api_repository.dart';
+import 'package:immich_mobile/repositories/saved_location_api.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/utils/timezone.dart';
 import 'package:immich_mobile/widgets/common/date_time_picker.dart';
 import 'package:immich_mobile/widgets/common/location_picker.dart';
+import 'package:logging/logging.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as maplibre;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -35,6 +37,7 @@ final actionServiceProvider = Provider<ActionService>(
     ref.watch(trashedLocalAssetRepository),
     ref.watch(assetMediaRepositoryProvider),
     ref.watch(downloadRepositoryProvider),
+    ref.watch(savedLocationApiRepositoryProvider),
   ),
 );
 
@@ -47,6 +50,7 @@ class ActionService {
   final DriftTrashedLocalAssetRepository _trashedLocalAssetRepository;
   final AssetMediaRepository _assetMediaRepository;
   final DownloadRepository _downloadRepository;
+  final SavedLocationApiRepository _savedLocationApiRepository;
 
   const ActionService(
     this._assetApiRepository,
@@ -57,6 +61,7 @@ class ActionService {
     this._trashedLocalAssetRepository,
     this._assetMediaRepository,
     this._downloadRepository,
+    this._savedLocationApiRepository,
   );
 
   Future<void> shareLink(List<String> remoteIds, BuildContext context) async {
@@ -132,24 +137,54 @@ class ActionService {
 
   Future<bool> editLocation(List<String> remoteIds, BuildContext context) async {
     maplibre.LatLng? initialLatLng;
+    var noLocationMode = NoLocationMode.mark;
     if (remoteIds.length == 1) {
       final exif = await _remoteAssetRepository.getExif(remoteIds[0]);
 
       if (exif?.latitude != null && exif?.longitude != null) {
         initialLatLng = maplibre.LatLng(exif!.latitude!, exif.longitude!);
+      } else {
+        // Only an asset without coordinates can be marked No Location, so the flag is only worth
+        // asking the server about then. Failing to ask still leaves "No Location" on offer.
+        try {
+          if (await _savedLocationApiRepository.getNoLocation(remoteIds[0])) {
+            noLocationMode = NoLocationMode.unassign;
+          }
+        } catch (error, stack) {
+          Logger('ActionService').warning('Failed to read No Location flag', error, stack);
+        }
       }
     }
 
-    final location = await showLocationPicker(context: context, initialLatLng: initialLatLng);
-
-    if (location == null) {
+    if (!context.mounted) {
       return false;
     }
 
-    await _assetApiRepository.updateLocation(remoteIds, location);
-    await _remoteAssetRepository.updateLocation(remoteIds, location);
+    final result = await pickLocation(context: context, initialLatLng: initialLatLng, noLocationMode: noLocationMode);
 
+    if (result == null) {
+      return false;
+    }
+
+    await applyLocation(remoteIds, result);
     return true;
+  }
+
+  /// Applies what the location picker returned to the assets, on the server and locally.
+  Future<void> applyLocation(List<String> remoteIds, LocationPickerResult result) async {
+    switch (result) {
+      case PickedPoint(:final latLng):
+        await _assetApiRepository.updateLocation(remoteIds, latLng);
+        await _remoteAssetRepository.updateLocation(remoteIds, latLng);
+      case PickedNoLocation(value: true):
+        await _savedLocationApiRepository.markNoLocation(remoteIds);
+        await _remoteAssetRepository.clearLocation(remoteIds);
+      case PickedNoLocation(value: false):
+        // Unassigning leaves the asset without coordinates, so there is nothing to change locally.
+        for (final id in remoteIds) {
+          await _savedLocationApiRepository.unassignNoLocation(id);
+        }
+    }
   }
 
   Future<bool> editDateTime(List<String> remoteIds, BuildContext context) async {

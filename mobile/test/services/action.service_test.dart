@@ -8,13 +8,18 @@ import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/infrastructure/repositories/db.repository.dart';
 import 'package:immich_mobile/infrastructure/repositories/store.repository.dart';
 import 'package:immich_mobile/repositories/download.repository.dart';
+import 'package:immich_mobile/repositories/saved_location_api.repository.dart';
 import 'package:immich_mobile/services/action.service.dart';
+import 'package:immich_mobile/widgets/common/location_picker.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../infrastructure/repository.mock.dart';
 import '../repository.mocks.dart';
 
 class MockDownloadRepository extends Mock implements DownloadRepository {}
+
+class MockSavedLocationApiRepository extends Mock implements SavedLocationApiRepository {}
 
 void main() {
   late ActionService sut;
@@ -27,6 +32,7 @@ void main() {
   late MockTrashedLocalAssetRepository trashedLocalAssetRepository;
   late MockAssetMediaRepository assetMediaRepository;
   late MockDownloadRepository downloadRepository;
+  late MockSavedLocationApiRepository savedLocationApiRepository;
 
   late Drift db;
 
@@ -53,6 +59,7 @@ void main() {
     trashedLocalAssetRepository = MockTrashedLocalAssetRepository();
     assetMediaRepository = MockAssetMediaRepository();
     downloadRepository = MockDownloadRepository();
+    savedLocationApiRepository = MockSavedLocationApiRepository();
 
     sut = ActionService(
       assetApiRepository,
@@ -63,6 +70,7 @@ void main() {
       trashedLocalAssetRepository,
       assetMediaRepository,
       downloadRepository,
+      savedLocationApiRepository,
     );
   });
 
@@ -113,6 +121,44 @@ void main() {
       verify(() => assetMediaRepository.deleteAll(ids)).called(1);
       verifyNever(() => trashedLocalAssetRepository.applyTrashedAssets(any()));
       verifyNever(() => localAssetRepository.delete(any()));
+    });
+  });
+
+  group('ActionService.applyLocation', () {
+    const ids = ['a1', 'a2'];
+
+    setUpAll(() => registerFallbackValue(const LatLng(0, 0)));
+
+    test('a picked point updates the server and the local copy', () async {
+      const point = LatLng(53.35, -6.26);
+      when(() => assetApiRepository.updateLocation(ids, point)).thenAnswer((_) async {});
+      when(() => remoteAssetRepository.updateLocation(ids, point)).thenAnswer((_) async {});
+
+      await sut.applyLocation(ids, const PickedPoint(point));
+
+      verify(() => assetApiRepository.updateLocation(ids, point)).called(1);
+      verify(() => remoteAssetRepository.updateLocation(ids, point)).called(1);
+      verifyZeroInteractions(savedLocationApiRepository);
+    });
+
+    test('No Location marks the assets on the server and clears their local coordinates', () async {
+      when(() => savedLocationApiRepository.markNoLocation(ids)).thenAnswer((_) async {});
+      when(() => remoteAssetRepository.clearLocation(ids)).thenAnswer((_) async {});
+
+      await sut.applyLocation(ids, const PickedNoLocation(true));
+
+      verify(() => savedLocationApiRepository.markNoLocation(ids)).called(1);
+      verify(() => remoteAssetRepository.clearLocation(ids)).called(1);
+      verifyNever(() => assetApiRepository.updateLocation(any(), any()));
+    });
+
+    test('Unassign Location clears the marker on the server only', () async {
+      when(() => savedLocationApiRepository.unassignNoLocation('a1')).thenAnswer((_) async {});
+
+      await sut.applyLocation(['a1'], const PickedNoLocation(false));
+
+      verify(() => savedLocationApiRepository.unassignNoLocation('a1')).called(1);
+      verifyZeroInteractions(remoteAssetRepository);
     });
   });
 }

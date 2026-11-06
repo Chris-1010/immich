@@ -182,6 +182,26 @@ class RemoteAssetRepository extends DriftDatabaseRepository {
     });
   }
 
+  /// Drops the coordinates and the place names derived from them, as the server does when assets
+  /// are marked No Location.
+  Future<void> clearLocation(List<String> ids) {
+    return _db.batch((batch) async {
+      for (final id in ids) {
+        batch.update(
+          _db.remoteExifEntity,
+          const RemoteExifEntityCompanion(
+            latitude: Value(null),
+            longitude: Value(null),
+            city: Value(null),
+            state: Value(null),
+            country: Value(null),
+          ),
+          where: (e) => e.assetId.equals(id),
+        );
+      }
+    });
+  }
+
   Future<void> updateDateTime(List<String> ids, DateTime dateTime) {
     return _db.batch((batch) async {
       for (final id in ids) {

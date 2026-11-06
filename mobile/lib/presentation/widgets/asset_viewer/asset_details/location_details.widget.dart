@@ -9,6 +9,7 @@ import 'package:immich_mobile/extensions/theme_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/asset_viewer/sheet_tile.widget.dart';
 import 'package:immich_mobile/providers/infrastructure/action.provider.dart';
+import 'package:immich_mobile/providers/saved_location.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/asset_viewer/detail_panel/exif_map.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -110,7 +111,14 @@ class _LocationDetailsState extends ConsumerState<LocationDetails> {
                 ],
               ),
             ),
-          if (!hasCoordinates)
+          if (!hasCoordinates && ref.watch(assetNoLocationProvider(asset.id)).valueOrNull == true)
+            SheetTile(
+              title: "location_picker_marked_no_location".t(context: context),
+              titleStyle: context.textTheme.bodyMedium?.copyWith(color: context.colorScheme.onSurfaceSecondary),
+              leading: const Icon(Icons.location_disabled_outlined),
+              onTap: editLocation,
+            )
+          else if (!hasCoordinates)
             SheetTile(
               title: "add_a_location".t(context: context),
               titleStyle: context.textTheme.bodyMedium?.copyWith(

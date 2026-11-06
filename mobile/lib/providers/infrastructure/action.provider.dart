@@ -8,6 +8,7 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/services/asset.service.dart';
 import 'package:immich_mobile/models/download/livephotos_medatada.model.dart';
 import 'package:immich_mobile/providers/asset_viewer/asset_viewer.provider.dart';
+import 'package:immich_mobile/providers/saved_location.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/asset_viewer/asset.provider.dart' show assetExifProvider;
 import 'package:immich_mobile/providers/timeline/multiselect.provider.dart';
@@ -309,6 +310,9 @@ class ActionNotifier extends Notifier<void> {
         final currentAsset = ref.read(assetViewerProvider).currentAsset;
         if (currentAsset != null) {
           ref.invalidate(assetExifProvider(currentAsset));
+          if (currentAsset is RemoteAsset) {
+            ref.invalidate(assetNoLocationProvider(currentAsset.id));
+          }
         }
       }
 
