@@ -2,9 +2,13 @@ import 'package:collection/collection.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/duration_extensions.dart';
+import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
+import 'package:immich_mobile/utils/timezone.dart';
 import 'package:immich_mobile/widgets/common/dropdown_search_menu.dart';
+import 'package:immich_mobile/widgets/common/located_asset_picker.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/timezone.dart';
 
@@ -25,23 +29,27 @@ String _getFormattedOffset(int offsetInMilli, tz.Location location) {
   return "${location.name} (${Duration(milliseconds: offsetInMilli).formatAsOffset()})";
 }
 
-class _DateTimePicker extends HookWidget {
+class _DateTimePicker extends HookConsumerWidget {
   final DateTime? initialDateTime;
   final String? initialTZ;
   final Duration? initialTZOffset;
 
   const _DateTimePicker({this.initialDateTime, this.initialTZ, this.initialTZOffset});
 
-  _TimeZoneOffset _getInitiationLocation() {
-    if (initialTZ != null) {
+  _TimeZoneOffset _getInitiationLocation() =>
+      _resolveTimeZone(timeZone: initialTZ, offset: initialTZOffset ?? initialDateTime?.timeZoneOffset);
+
+  /// The named zone if it is known, else a zone with a matching offset, else UTC.
+  static _TimeZoneOffset _resolveTimeZone({String? timeZone, Duration? offset}) {
+    if (timeZone != null) {
       try {
-        return _TimeZoneOffset.fromLocation(tz.timeZoneDatabase.get(initialTZ!));
+        return _TimeZoneOffset.fromLocation(tz.timeZoneDatabase.get(timeZone));
       } on LocationNotFoundException {
         // no-op
       }
     }
 
-    Duration? tzOffset = initialTZOffset ?? initialDateTime?.timeZoneOffset;
+    Duration? tzOffset = offset;
 
     if (tzOffset != null) {
       final offsetInMilli = tzOffset.inMilliseconds;
@@ -66,7 +74,7 @@ class _DateTimePicker extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final date = useState<DateTime>(initialDateTime ?? DateTime.now());
     final tzOffset = useState<_TimeZoneOffset>(_getInitiationLocation());
     final timeZones = useMemoized(() => getAllTimeZones(), const []);
@@ -101,6 +109,25 @@ class _DateTimePicker extends HookWidget {
       }
 
       date.value = newDate.copyWith(hour: newTime.hour, minute: newTime.minute);
+    }
+
+    /// Copies the date, time and zone of a photo the user picks, read the same way as the asset
+    /// viewer shows them.
+    Future<void> copyFromImage() async {
+      final asset = await pickAsset(context);
+      if (asset == null) {
+        return;
+      }
+      DateTime dateTime = asset.createdAt.toLocal();
+      Duration offset = dateTime.timeZoneOffset;
+      String? timeZone;
+      final exif = await ref.read(assetServiceProvider).getExif(asset);
+      if (exif?.dateTimeOriginal != null) {
+        timeZone = exif!.timeZone;
+        (dateTime, offset) = applyTimezoneOffset(dateTime: exif.dateTimeOriginal!, timeZone: exif.timeZone);
+      }
+      date.value = dateTime;
+      tzOffset.value = _resolveTimeZone(timeZone: timeZone, offset: offset);
     }
 
     void popWithDateTime() {
@@ -148,8 +175,19 @@ class _DateTimePicker extends HookWidget {
             title: Text(DateFormat("dd-MM-yyyy hh:mm a").format(date.value), style: context.textTheme.bodyMedium),
             onTap: pickDate,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              icon: const Icon(Icons.photo_library_outlined, size: 18),
+              label: const Text('location_picker_from_image').tr(),
+              onPressed: copyFromImage,
+            ),
+          ),
+          const SizedBox(height: 16),
           DropdownSearchMenu(
+            // The menu reads its selection once, so a zone copied from a photo needs a fresh menu.
+            key: ValueKey(tzOffset.value),
             trailingIcon: Icon(Icons.arrow_drop_down, color: context.primaryColor),
             hintText: "timezone".tr(),
             label: const Text('timezone').tr(),
