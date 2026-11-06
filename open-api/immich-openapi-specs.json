@@ -23156,6 +23156,10 @@
           "checksum": {
             "type": "string"
           },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "deletedAt": {
             "format": "date-time",
             "nullable": true,
@@ -23225,6 +23229,7 @@
         },
         "required": [
           "checksum",
+          "createdAt",
           "deletedAt",
           "duration",
           "fileCreatedAt",

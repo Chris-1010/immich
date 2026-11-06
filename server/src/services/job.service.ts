@@ -132,6 +132,7 @@ export class JobService extends BaseService {
                 checksum: hexOrBufferToBase64(asset.checksum),
                 fileCreatedAt: asset.fileCreatedAt,
                 fileModifiedAt: asset.fileModifiedAt,
+                createdAt: asset.createdAt,
                 localDateTime: asset.localDateTime,
                 duration: asset.duration,
                 type: asset.type,

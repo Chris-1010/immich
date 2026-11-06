@@ -107,6 +107,7 @@ export class SyncAssetV1 {
   checksum!: string;
   fileCreatedAt!: Date | null;
   fileModifiedAt!: Date | null;
+  createdAt!: Date;
   localDateTime!: Date | null;
   duration!: string | null;
   @ValidateEnum({ enum: AssetType, name: 'AssetTypeEnum' })
