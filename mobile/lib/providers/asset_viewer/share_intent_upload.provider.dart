@@ -79,6 +79,12 @@ class ShareIntentUploadStateNotifier extends StateNotifier<List<ShareIntentAttac
   }
 
   void onRouteChanged(String? routeName) {
+    // Dialogs, bottom sheets, menus and plain page routes are pushed without a name. They say
+    // nothing about whether startup has finished, and the route name is not reset when they
+    // close, so counting them would hold every later share until a named page is pushed.
+    if (routeName == null) {
+      return;
+    }
     _currentRouteName = routeName;
     final pending = _pendingShare;
     if (pending != null && _isAppReady) {

@@ -84,6 +84,26 @@ void main() {
     verify(() => router.push(any(that: isA<ShareIntentRoute>()))).called(1);
   });
 
+  test('share received after a dialog or sheet was opened is shown immediately', () {
+    notifier.onRouteChanged(TabShellRoute.name);
+    // Dialogs, bottom sheets and menus push routes without a name.
+    notifier.onRouteChanged(null);
+    notifier.onSharedMedia(attachments);
+
+    verify(() => router.push(any(that: isA<ShareIntentRoute>()))).called(1);
+  });
+
+  test('share received after signing out is held until the app is back past login', () {
+    notifier.onRouteChanged(TabShellRoute.name);
+    notifier.onRouteChanged(LoginRoute.name);
+    notifier.onRouteChanged(null);
+    notifier.onSharedMedia(attachments);
+    verifyNever(() => router.push(any()));
+
+    notifier.onRouteChanged(TabShellRoute.name);
+    verify(() => router.push(any(that: isA<ShareIntentRoute>()))).called(1);
+  });
+
   group('ShareIntentAssetDetails', () {
     test('placeName joins the known parts', () {
       expect(const ShareIntentAssetDetails(city: 'Dublin', country: 'Ireland').placeName, 'Dublin, Ireland');
