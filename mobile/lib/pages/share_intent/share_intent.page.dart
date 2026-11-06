@@ -221,16 +221,31 @@ class ShareIntentPage extends ConsumerWidget {
 
 enum _LocationScope { missing, all }
 
-/// Picks a location and applies it to every uploaded asset, asking first
-/// whether to overwrite assets that already have one.
+/// Picks a location (or No Location) and applies it to every uploaded asset, asking first whether
+/// to overwrite assets that already have one.
 Future<void> _setLocationForAll(BuildContext context, WidgetRef ref) async {
-  final location = await showLocationPicker(context: context);
-  if (location == null || !context.mounted) {
+  final uploaded = ref.read(shareIntentUploadProvider).where(_isUploadedAsset).toList();
+  final marked = uploaded.where((attachment) => attachment.details?.isNoLocation == true).toList();
+
+  // Once every upload is marked, the only No Location choice left is to unassign it.
+  final allMarked = uploaded.isNotEmpty && marked.length == uploaded.length;
+  final result = await pickLocation(
+    context: context,
+    noLocationMode: allMarked ? NoLocationMode.unassign : NoLocationMode.mark,
+  );
+  if (result == null || !context.mounted) {
     return;
   }
 
-  final uploaded = ref.read(shareIntentUploadProvider).where(_isUploadedAsset).toList();
-  final missing = uploaded.where((attachment) => attachment.details?.hasLocation != true).toList();
+  if (result case PickedNoLocation(value: false)) {
+    await _saveNoLocation(context, ref, marked, false);
+    return;
+  }
+
+  // "Missing" means no location yet; a photo already marked No Location counts as set.
+  final missing = uploaded
+      .where((attachment) => attachment.details?.hasLocation != true && attachment.details?.isNoLocation != true)
+      .toList();
 
   var scope = _LocationScope.all;
   if (missing.length != uploaded.length) {
@@ -263,7 +278,13 @@ Future<void> _setLocationForAll(BuildContext context, WidgetRef ref) async {
   if (!context.mounted) {
     return;
   }
-  await _saveLocation(context, ref, scope == _LocationScope.missing ? missing : uploaded, location);
+  final targets = scope == _LocationScope.missing ? missing : uploaded;
+  switch (result) {
+    case PickedPoint(:final latLng):
+      await _saveLocation(context, ref, targets, latLng);
+    case PickedNoLocation():
+      await _saveNoLocation(context, ref, targets, true);
+  }
 }
 
 Future<bool> _saveLocation(
@@ -274,6 +295,23 @@ Future<bool> _saveLocation(
 ) async {
   try {
     await ref.read(shareIntentUploadProvider.notifier).updateLocation(attachments, location);
+    return true;
+  } catch (error) {
+    if (context.mounted) {
+      ImmichToast.show(context: context, msg: 'share_intent_update_failed'.tr(), toastType: ToastType.error);
+    }
+    return false;
+  }
+}
+
+Future<bool> _saveNoLocation(
+  BuildContext context,
+  WidgetRef ref,
+  List<ShareIntentAttachment> attachments,
+  bool value,
+) async {
+  try {
+    await ref.read(shareIntentUploadProvider.notifier).setNoLocation(attachments, value);
     return true;
   } catch (error) {
     if (context.mounted) {
@@ -311,12 +349,23 @@ class _AssetDetailsBar extends ConsumerWidget {
   }
 
   Future<void> _editLocation(BuildContext context, WidgetRef ref) async {
-    final location = await showLocationPicker(
+    final result = await pickLocation(
       context: context,
       initialLatLng: details.hasLocation ? LatLng(details.latitude!, details.longitude!) : null,
+      noLocationMode: details.isNoLocation ? NoLocationMode.unassign : NoLocationMode.mark,
     );
-    if (location == null || !context.mounted) {
+    if (result == null || !context.mounted) {
       return;
+    }
+
+    final LatLng location;
+    switch (result) {
+      case PickedNoLocation(:final value):
+        // No Location is a deliberate choice for this photo alone, so it is not offered to the others.
+        await _saveNoLocation(context, ref, [attachment], value);
+        return;
+      case PickedPoint(:final latLng):
+        location = latLng;
     }
 
     final saved = await _saveLocation(context, ref, [attachment], location);
@@ -334,7 +383,8 @@ class _AssetDetailsBar extends ConsumerWidget {
               _isUploadedAsset(other) &&
               other.details != null &&
               !other.details!.isLoading &&
-              !other.details!.hasLocation,
+              !other.details!.hasLocation &&
+              !other.details!.isNoLocation,
         )
         .toList();
     if (missing.isEmpty) {
@@ -391,6 +441,8 @@ class _AssetDetailsBar extends ConsumerWidget {
       locationText = details.placeName!;
     } else if (details.hasLocation) {
       locationText = '${details.latitude!.toStringAsFixed(2)}, ${details.longitude!.toStringAsFixed(2)}';
+    } else if (details.isNoLocation) {
+      locationText = 'location_picker_mark_no_location'.tr();
     } else {
       locationText = 'add_location'.tr();
     }
@@ -406,7 +458,7 @@ class _AssetDetailsBar extends ConsumerWidget {
         const SizedBox(width: 8),
         Expanded(
           child: _DetailButton(
-            icon: const Icon(Icons.location_on_outlined),
+            icon: Icon(details.isNoLocation ? Icons.location_off_outlined : Icons.location_on_outlined),
             label: Text(locationText, maxLines: 1, overflow: TextOverflow.ellipsis),
             isEdited: details.isLocationEdited,
             onPressed: isLoading ? null : () => _editLocation(context, ref),

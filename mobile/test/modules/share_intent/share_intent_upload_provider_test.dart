@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:immich_mobile/models/upload/share_intent_attachment.model.dart';
 import 'package:immich_mobile/providers/asset_viewer/share_intent_upload.provider.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
+import 'package:immich_mobile/repositories/saved_location_api.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/services/share_intent_service.dart';
@@ -16,11 +17,14 @@ class _MockShareIntentService extends Mock implements ShareIntentService {}
 
 class _MockAssetApiRepository extends Mock implements AssetApiRepository {}
 
+class _MockSavedLocationApiRepository extends Mock implements SavedLocationApiRepository {}
+
 class _FakePageRouteInfo extends Fake implements PageRouteInfo {}
 
 void main() {
   late _MockAppRouter router;
   late ShareIntentUploadStateNotifier notifier;
+  late _MockSavedLocationApiRepository savedLocationApiRepository;
 
   final attachments = [
     ShareIntentAttachment(path: '/tmp/a.jpg', type: ShareIntentAttachmentType.image, status: UploadStatus.enqueued),
@@ -31,6 +35,7 @@ void main() {
   });
 
   setUp(() {
+    savedLocationApiRepository = _MockSavedLocationApiRepository();
     router = _MockAppRouter();
     when(() => router.push(any())).thenAnswer((_) async => null);
     when(() => router.removeWhere(any())).thenReturn(false);
@@ -39,6 +44,7 @@ void main() {
       _MockForegroundUploadService(),
       _MockShareIntentService(),
       _MockAssetApiRepository(),
+      savedLocationApiRepository,
     );
   });
 
@@ -126,5 +132,42 @@ void main() {
       fileLength: 2048,
     );
     expect(attachment.copyWith(status: UploadStatus.complete).fileLength, 2048);
+  });
+
+  group('setNoLocation', () {
+    final uploaded = ShareIntentAttachment(
+      path: '/tmp/b.jpg',
+      type: ShareIntentAttachmentType.image,
+      status: UploadStatus.complete,
+      remoteAssetId: 'remote-b',
+      details: const ShareIntentAssetDetails(latitude: 53.3, longitude: -6.2, city: 'Dublin'),
+    );
+
+    setUp(() {
+      notifier.onRouteChanged(TabShellRoute.name);
+      notifier.onSharedMedia([uploaded]);
+    });
+
+    test('marking clears the coordinates and place name', () async {
+      when(() => savedLocationApiRepository.markNoLocation(['remote-b'])).thenAnswer((_) async {});
+
+      await notifier.setNoLocation([uploaded], true);
+
+      verify(() => savedLocationApiRepository.markNoLocation(['remote-b'])).called(1);
+      final details = notifier.state.single.details!;
+      expect(details.isNoLocation, isTrue);
+      expect(details.hasLocation, isFalse);
+      expect(details.placeName, isNull);
+      expect(details.isLocationEdited, isTrue);
+    });
+
+    test('unassigning clears the marker', () async {
+      when(() => savedLocationApiRepository.unassignNoLocation('remote-b')).thenAnswer((_) async {});
+
+      await notifier.setNoLocation([uploaded], false);
+
+      verify(() => savedLocationApiRepository.unassignNoLocation('remote-b')).called(1);
+      expect(notifier.state.single.details!.isNoLocation, isFalse);
+    });
   });
 }

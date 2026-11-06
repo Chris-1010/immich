@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/models/upload/share_intent_attachment.model.dart';
 import 'package:immich_mobile/providers/routes.provider.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
+import 'package:immich_mobile/repositories/saved_location_api.repository.dart';
 import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/services/share_intent_service.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
@@ -23,6 +24,7 @@ final shareIntentUploadProvider = StateNotifierProvider<ShareIntentUploadStateNo
     ref.read(foregroundUploadServiceProvider),
     ref.read(shareIntentServiceProvider),
     ref.read(assetApiRepositoryProvider),
+    ref.read(savedLocationApiRepositoryProvider),
   );
   ref.listen(currentRouteNameProvider, (_, routeName) => notifier.onRouteChanged(routeName));
   return notifier;
@@ -49,6 +51,7 @@ class ShareIntentUploadStateNotifier extends StateNotifier<List<ShareIntentAttac
   final ForegroundUploadService _foregroundUploadService;
   final ShareIntentService _shareIntentService;
   final AssetApiRepository _assetApiRepository;
+  final SavedLocationApiRepository _savedLocationApiRepository;
   final Logger _logger = Logger('ShareIntentUploadStateNotifier');
 
   List<ShareIntentAttachment>? _pendingShare;
@@ -60,6 +63,7 @@ class ShareIntentUploadStateNotifier extends StateNotifier<List<ShareIntentAttac
     this._foregroundUploadService,
     this._shareIntentService,
     this._assetApiRepository,
+    this._savedLocationApiRepository,
   ) : super([]);
 
   void init() {
@@ -284,6 +288,39 @@ class ShareIntentUploadStateNotifier extends StateNotifier<List<ShareIntentAttac
         ),
       );
       unawaited(_awaitPlaceName(target.id, target.remoteAssetId!, location));
+    }
+  }
+
+  /// Marks the given attachments No Location ([value] true), or clears the marker ([value] false).
+  /// Marking drops their coordinates and place names, as the server does.
+  Future<void> setNoLocation(List<ShareIntentAttachment> attachments, bool value) async {
+    final targets = attachments.where((attachment) => attachment.remoteAssetId != null).toList();
+    if (targets.isEmpty) {
+      return;
+    }
+
+    final ids = targets.map((target) => target.remoteAssetId!).toList();
+    if (value) {
+      await _savedLocationApiRepository.markNoLocation(ids);
+    } else {
+      // The server only clears the marker one asset at a time.
+      for (final id in ids) {
+        await _savedLocationApiRepository.unassignNoLocation(id);
+      }
+    }
+
+    for (final target in targets) {
+      _updateDetails(
+        target.id,
+        (details) => ShareIntentAssetDetails(
+          dateTime: details.dateTime,
+          timeZone: details.timeZone,
+          timeZoneOffset: details.timeZoneOffset,
+          isDateEdited: details.isDateEdited,
+          isLocationEdited: true,
+          isNoLocation: value,
+        ),
+      );
     }
   }
 

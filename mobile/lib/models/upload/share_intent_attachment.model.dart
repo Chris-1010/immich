@@ -31,6 +31,9 @@ class ShareIntentAssetDetails {
   final bool isDateEdited;
   final bool isLocationEdited;
 
+  /// Marked No Location on the server: no coordinates, and locked so a re-scan cannot add them back.
+  final bool isNoLocation;
+
   const ShareIntentAssetDetails({
     this.dateTime,
     this.timeZone,
@@ -44,6 +47,7 @@ class ShareIntentAssetDetails {
     this.isGeocoding = false,
     this.isDateEdited = false,
     this.isLocationEdited = false,
+    this.isNoLocation = false,
   });
 
   const ShareIntentAssetDetails.loading() : this(isLoading: true);
@@ -80,6 +84,7 @@ class ShareIntentAssetDetails {
     bool? isGeocoding,
     bool? isDateEdited,
     bool? isLocationEdited,
+    bool? isNoLocation,
   }) {
     return ShareIntentAssetDetails(
       dateTime: dateTime ?? this.dateTime,
@@ -94,6 +99,7 @@ class ShareIntentAssetDetails {
       isGeocoding: isGeocoding ?? this.isGeocoding,
       isDateEdited: isDateEdited ?? this.isDateEdited,
       isLocationEdited: isLocationEdited ?? this.isLocationEdited,
+      isNoLocation: isNoLocation ?? this.isNoLocation,
     );
   }
 }
