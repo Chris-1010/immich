@@ -79,6 +79,9 @@ enum StoreKey<T> {
   // Trash settings
   trashSortByDateDeleted<bool>._(142),
 
+  // Main timeline settings
+  timelineSortByDateAdded<bool>._(143),
+
   // Experimental stuff
   photoManagerCustomFilter<bool>._(1000),
   betaPromptShown<bool>._(1001),

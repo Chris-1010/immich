@@ -10,7 +10,8 @@ enum Setting<T> {
   preferRemoteImage<bool>(StoreKey.preferRemoteImage, false),
   advancedTroubleshooting<bool>(StoreKey.advancedTroubleshooting, false),
   enableBackup<bool>(StoreKey.enableBackup, false),
-  trashSortByDateDeleted<bool>(StoreKey.trashSortByDateDeleted, true);
+  trashSortByDateDeleted<bool>(StoreKey.trashSortByDateDeleted, true),
+  timelineSortByDateAdded<bool>(StoreKey.timelineSortByDateAdded, false);
 
   const Setting(this.storeKey, this.defaultValue);
 

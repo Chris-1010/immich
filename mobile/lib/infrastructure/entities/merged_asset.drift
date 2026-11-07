@@ -4,7 +4,8 @@ import 'local_asset.entity.dart';
 import 'local_album.entity.dart';
 import 'local_album_asset.entity.dart';
 
-mergedAsset: 
+-- :sort_by 0 = date taken, 1 = date added (uploaded to Immich)
+mergedAsset(:sort_by AS INTEGER):
 SELECT
 	rae.id as remote_id,
 	(SELECT lae.id FROM local_asset_entity lae WHERE lae.checksum = rae.checksum LIMIT 1) as local_id,
@@ -27,7 +28,11 @@ SELECT
 	NULL as longitude,
 	NULL as adjustmentTime,
 	rae.is_edited,
-	0 as playback_style
+	0 as playback_style,
+	CASE
+		WHEN :sort_by = 1 THEN COALESCE(rae.uploaded_at, rae.created_at)
+		ELSE rae.created_at
+	END as sort_date
 FROM
 	remote_asset_entity rae
 LEFT JOIN
@@ -65,7 +70,9 @@ SELECT
 	lae.longitude,
 	lae.adjustment_time,
 	0 as is_edited,
-	lae.playback_style
+	lae.playback_style,
+	-- Not uploaded yet, so there is no date added: fall back to the date taken
+	lae.created_at as sort_date
 FROM
 	local_asset_entity lae
 WHERE NOT EXISTS (
@@ -81,10 +88,10 @@ AND NOT EXISTS (
     INNER JOIN local_album_entity la on laa.album_id = la.id
     WHERE laa.asset_id = lae.id AND la.backup_selection = 2 -- excluded
 )
-ORDER BY created_at DESC
+ORDER BY sort_date DESC
 LIMIT $limit;
 
-mergedBucket(:group_by AS INTEGER):
+mergedBucket(:group_by AS INTEGER, :sort_by AS INTEGER):
 SELECT
 	COUNT(*) as asset_count,
 	bucket_date
@@ -92,6 +99,10 @@ FROM
 (
 	SELECT
 		CASE
+			WHEN :sort_by = 1 AND :group_by = 0 THEN
+				STRFTIME('%Y-%m-%d', COALESCE(rae.uploaded_at, rae.created_at), 'localtime')
+			WHEN :sort_by = 1 AND :group_by = 1 THEN
+				STRFTIME('%Y-%m', COALESCE(rae.uploaded_at, rae.created_at), 'localtime')
 			WHEN :group_by = 0 THEN COALESCE(
 				STRFTIME('%Y-%m-%d', rae.local_date_time),
 				STRFTIME('%Y-%m-%d', rae.created_at, 'localtime')

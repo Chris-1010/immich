@@ -48,26 +48,42 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
         .map((users) => users..add(userId));
   }
 
-  TimelineQuery main(List<String> userIds, GroupAssetsBy groupBy) => (
-    bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy),
-    assetSource: (offset, count) => _getMainBucketAssets(userIds, offset: offset, count: count),
+  /// Main timeline. With [sortByDateAdded] remote assets are grouped and ordered by when they were
+  /// uploaded instead of when they were taken; local-only assets keep their date taken.
+  TimelineQuery main(List<String> userIds, GroupAssetsBy groupBy, {bool sortByDateAdded = false}) => (
+    bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy, sortByDateAdded: sortByDateAdded),
+    assetSource: (offset, count) =>
+        _getMainBucketAssets(userIds, offset: offset, count: count, sortByDateAdded: sortByDateAdded),
     origin: TimelineOrigin.main,
   );
 
-  Stream<List<Bucket>> _watchMainBucket(List<String> userIds, {GroupAssetsBy groupBy = GroupAssetsBy.day}) {
+  Stream<List<Bucket>> _watchMainBucket(
+    List<String> userIds, {
+    GroupAssetsBy groupBy = GroupAssetsBy.day,
+    bool sortByDateAdded = false,
+  }) {
     if (groupBy == GroupAssetsBy.none) {
       throw UnsupportedError("GroupAssetsBy.none is not supported for watchMainBucket");
     }
 
-    return _db.mergedAssetDrift.mergedBucket(userIds: userIds, groupBy: groupBy.index).map((row) {
-      final date = row.bucketDate.truncateDate(groupBy);
-      return TimeBucket(date: date, assetCount: row.assetCount);
-    }).watch();
+    return _db.mergedAssetDrift
+        .mergedBucket(userIds: userIds, groupBy: groupBy.index, sortBy: sortByDateAdded ? 1 : 0)
+        .map((row) {
+          final date = row.bucketDate.truncateDate(groupBy);
+          return TimeBucket(date: date, assetCount: row.assetCount);
+        })
+        .watch();
   }
 
-  Future<List<BaseAsset>> _getMainBucketAssets(List<String> userIds, {required int offset, required int count}) {
+  Future<List<BaseAsset>> _getMainBucketAssets(
+    List<String> userIds, {
+    required int offset,
+    required int count,
+    bool sortByDateAdded = false,
+  }) {
+    // sortBy must match the bucket query: the timeline pairs buckets with assets purely by offset.
     return _db.mergedAssetDrift
-        .mergedAsset(userIds: userIds, limit: (_) => Limit(count, offset))
+        .mergedAsset(userIds: userIds, sortBy: sortByDateAdded ? 1 : 0, limit: (_) => Limit(count, offset))
         .map(
           (row) => row.remoteId != null && row.ownerId != null
               ? RemoteAsset(
