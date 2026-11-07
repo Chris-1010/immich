@@ -57,6 +57,20 @@ class DriftTimelineRepository extends DriftDatabaseRepository {
     origin: TimelineOrigin.main,
   );
 
+  /// The date [asset] is grouped and ordered under in the main timeline.
+  Future<DateTime> mainSortDate(BaseAsset asset, {required bool sortByDateAdded}) async {
+    final remoteId = asset.remoteId;
+    if (!sortByDateAdded || remoteId == null) {
+      return asset.createdAt;
+    }
+
+    final query = _db.remoteAssetEntity.selectOnly()
+      ..addColumns([_db.remoteAssetEntity.uploadedAt])
+      ..where(_db.remoteAssetEntity.id.equals(remoteId));
+    final uploadedAt = await query.map((row) => row.read(_db.remoteAssetEntity.uploadedAt)).getSingleOrNull();
+    return uploadedAt ?? asset.createdAt;
+  }
+
   Stream<List<Bucket>> _watchMainBucket(
     List<String> userIds, {
     GroupAssetsBy groupBy = GroupAssetsBy.day,

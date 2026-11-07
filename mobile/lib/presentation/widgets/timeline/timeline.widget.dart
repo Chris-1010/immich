@@ -46,6 +46,7 @@ class Timeline extends StatelessWidget {
     this.readOnly = false,
     this.persistentBottomBar = false,
     this.loadingWidget,
+    this.selectionActions = const [],
   });
 
   final Widget? topSliverWidget;
@@ -61,6 +62,9 @@ class Timeline extends StatelessWidget {
   final bool readOnly;
   final bool persistentBottomBar;
   final Widget? loadingWidget;
+
+  /// Shown top right while assets are selected, when the app bar is hidden.
+  final List<Widget> selectionActions;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +97,7 @@ class Timeline extends StatelessWidget {
             snapToMonth: snapToMonth,
             maxWidth: constraints.maxWidth,
             loadingWidget: loadingWidget,
+            selectionActions: selectionActions,
           ),
         ),
       ),
@@ -123,6 +128,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
     this.snapToMonth = true,
     this.maxWidth,
     this.loadingWidget,
+    this.selectionActions = const [],
   });
 
   final Widget? topSliverWidget;
@@ -135,6 +141,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
   final bool snapToMonth;
   final double? maxWidth;
   final Widget? loadingWidget;
+  final List<Widget> selectionActions;
 
   @override
   ConsumerState createState() => _SliverTimelineState();
@@ -154,6 +161,7 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
   double _scaleFactor = 3.0;
   double _baseScaleFactor = 3.0;
   int? _restoreAssetIndex;
+  ScrollToAssetEvent? _pendingAssetScroll;
 
   @override
   void initState() {
@@ -167,6 +175,11 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
     _baseScaleFactor = _scaleFactor;
 
     ref.listenManual(multiSelectProvider.select((s) => s.isEnabled), _onMultiSelectionToggled);
+    ref.listenManual(timelineSegmentProvider, (_, segments) {
+      if (_pendingAssetScroll != null && !segments.isLoading && segments.hasValue) {
+        _scrollToPendingAsset(segments.requireValue);
+      }
+    });
   }
 
   @override
@@ -193,6 +206,13 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
 
       case ScrollToDateEvent scrollToDateEvent:
         _scrollToDate(scrollToDateEvent.date);
+      case ScrollToAssetEvent scrollToAssetEvent:
+        // The buckets are usually still regrouping, in which case the segment listener picks this up
+        _pendingAssetScroll = scrollToAssetEvent;
+        final segments = ref.read(timelineSegmentProvider);
+        if (!segments.isLoading && segments.hasValue) {
+          _scrollToPendingAsset(segments.requireValue);
+        }
       case TimelineReloadEvent():
         setState(() {});
       default:
@@ -291,6 +311,48 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
       }
     });
   }
+
+  Future<void> _scrollToPendingAsset(List<Segment> segments) async {
+    final target = _pendingAssetScroll;
+    if (target == null) return;
+    _pendingAssetScroll = null;
+
+    // Buckets are ordered newest first, so the asset's bucket is the first one not after its date
+    final date = target.date.toLocal();
+    final bucketIndex = segments.indexWhere(
+      (segment) => segment.bucket is TimeBucket && !(segment.bucket as TimeBucket).date.isAfter(date),
+    );
+    if (bucketIndex == -1) return;
+
+    final timelineService = ref.read(timelineServiceProvider);
+    // Neighbouring buckets cover dates that land on a bucket boundary
+    for (final index in [bucketIndex, bucketIndex - 1, bucketIndex + 1]) {
+      if (index < 0 || index >= segments.length) continue;
+      final segment = segments[index];
+      final assets = await timelineService.loadAssets(segment.firstAssetIndex, segment.bucket.assetCount);
+      final position = assets.indexWhere((asset) => _isSameAsset(asset, target.asset));
+      if (position == -1) continue;
+      if (!mounted) return;
+
+      final columnCount = ref.read(timelineArgsProvider).columnCount;
+      final rowIndex = segment.firstIndex + 1 + position ~/ columnCount;
+      final leadingExtent = (widget.topSliverWidgetHeight ?? 0) + (widget.appBar == null ? 0 : kToolbarHeight);
+      void jump() {
+        if (!mounted || !_scrollController.hasClients) return;
+        final position = _scrollController.position;
+        // Leave the asset a third of the way down the screen rather than under the top bar
+        final offset = segment.indexToLayoutOffset(rowIndex) + leadingExtent - position.viewportDimension / 3;
+        _scrollController.jumpTo(offset.clamp(0.0, position.maxScrollExtent));
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
+  }
+
+  static bool _isSameAsset(BaseAsset a, BaseAsset b) =>
+      (a.remoteId != null && a.remoteId == b.remoteId) || (a.localId != null && a.localId == b.localId);
 
   // Drag selection methods
   void _setDragStartIndex(TimelineAssetIndex index) {
@@ -478,6 +540,15 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
                         child: const SizedBox(
                           height: kToolbarHeight,
                           child: Center(child: _MultiSelectStatusButton()),
+                        ),
+                      ),
+                    if (isMultiSelectStatusVisible && widget.selectionActions.isNotEmpty)
+                      Positioned(
+                        top: MediaQuery.paddingOf(context).top,
+                        right: 8,
+                        child: SizedBox(
+                          height: kToolbarHeight,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: widget.selectionActions),
                         ),
                       ),
                     if (isBottomWidgetVisible) widget.bottomSheet!,

@@ -58,6 +58,10 @@ class TimelineFactory {
     ),
   );
 
+  /// The date [asset] is grouped under in the main timeline with the current sort setting.
+  Future<DateTime> mainSortDate(BaseAsset asset) =>
+      _timelineRepository.mainSortDate(asset, sortByDateAdded: _settingsService.get(Setting.timelineSortByDateAdded));
+
   TimelineService localAlbum({required String albumId}) =>
       TimelineService(_timelineRepository.localAlbum(albumId, groupBy));
 
