@@ -102,6 +102,9 @@ const othersAsSent = [
 ];
 
 describe('ContactFieldModal', () => {
+  // Outlast bits-ui's 24 ms body-scroll-lock cleanup timer, which otherwise fires after jsdom is torn down.
+  afterAll(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
   beforeEach(() => vi.clearAllMocks());
 
   it('opens on a blank row when the kind holds nothing Current', () => {

@@ -102,6 +102,9 @@ vi.mock('$lib/components/shared-components/map/map.svelte', () => ({
 }));
 
 describe('ChangeLocation', () => {
+  // Outlast bits-ui's 24 ms body-scroll-lock cleanup timer, which otherwise fires after jsdom is torn down.
+  afterAll(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
   beforeEach(() => {
     vi.clearAllMocks();
     lastChosenLocation.set(null);
