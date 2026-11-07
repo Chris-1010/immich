@@ -43,6 +43,9 @@ class RemoteAssetEntity extends Table with DriftDefaultsMixin, AssetEntityMixin 
 
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
+  /// When the asset was uploaded to Immich (the server's asset createdAt).
+  DateTimeColumn get uploadedAt => dateTime().nullable()();
+
   TextColumn get livePhotoVideoId => text().nullable()();
 
   IntColumn get visibility => intEnum<AssetVisibility>()();

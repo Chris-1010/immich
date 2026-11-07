@@ -517,7 +517,8 @@ void main() {
 
   group('SyncStreamService - Sync Migration', () {
     test('ensure that <2.5.0 migrations run', () async {
-      await Store.put(StoreKey.syncMigrationStatus, "[]");
+      // The uploadedAt reset is not tied to a server version and shares this reset, so mark it done
+      await Store.put(StoreKey.syncMigrationStatus, '["${SyncMigrationTask.v20261107_ResetAssetV1UploadedAt.name}"]');
       when(
         () => mockServerApi.getServerVersion(),
       ).thenAnswer((_) async => ServerVersionResponseDto(major: 2, minor: 4, patch_: 1));
@@ -568,6 +569,25 @@ void main() {
 
       // v20260128_ResetAssetV1 writes that v20260128_CopyExifWidthHeightToAsset has been completed
       verifyNever(() => mockSyncMigrationRepo.v20260128CopyExifWidthHeightToAsset());
+    });
+
+    test('uploadedAt reset re-syncs assets once on any server version', () async {
+      await Store.put(StoreKey.syncMigrationStatus, "[]");
+      when(
+        () => mockServerApi.getServerVersion(),
+      ).thenAnswer((_) async => ServerVersionResponseDto(major: 2, minor: 4, patch_: 1));
+
+      await sut.sync();
+      await sut.sync();
+
+      verify(
+        () => mockSyncApiRepo.deleteSyncAck([
+          SyncEntityType.assetV1,
+          SyncEntityType.partnerAssetV1,
+          SyncEntityType.albumAssetCreateV1,
+          SyncEntityType.albumAssetUpdateV1,
+        ]),
+      ).called(1);
     });
 
     test('ensure that migrations do not re-run', () async {

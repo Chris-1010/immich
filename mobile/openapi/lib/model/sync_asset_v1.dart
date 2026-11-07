@@ -14,6 +14,7 @@ class SyncAssetV1 {
   /// Returns a new [SyncAssetV1] instance.
   SyncAssetV1({
     required this.checksum,
+    this.createdAt,
     required this.deletedAt,
     required this.duration,
     required this.fileCreatedAt,
@@ -36,6 +37,9 @@ class SyncAssetV1 {
 
   /// Checksum
   String checksum;
+
+  /// Uploaded to Immich at
+  DateTime? createdAt;
 
   /// Deleted at
   DateTime? deletedAt;
@@ -98,6 +102,7 @@ class SyncAssetV1 {
     other.duration == duration &&
     other.fileCreatedAt == fileCreatedAt &&
     other.fileModifiedAt == fileModifiedAt &&
+    other.createdAt == createdAt &&
     other.height == height &&
     other.id == id &&
     other.isEdited == isEdited &&
@@ -121,6 +126,7 @@ class SyncAssetV1 {
     (duration == null ? 0 : duration!.hashCode) +
     (fileCreatedAt == null ? 0 : fileCreatedAt!.hashCode) +
     (fileModifiedAt == null ? 0 : fileModifiedAt!.hashCode) +
+    (createdAt == null ? 0 : createdAt!.hashCode) +
     (height == null ? 0 : height!.hashCode) +
     (id.hashCode) +
     (isEdited.hashCode) +
@@ -137,7 +143,7 @@ class SyncAssetV1 {
     (width == null ? 0 : width!.hashCode);
 
   @override
-  String toString() => 'SyncAssetV1[checksum=$checksum, deletedAt=$deletedAt, duration=$duration, fileCreatedAt=$fileCreatedAt, fileModifiedAt=$fileModifiedAt, height=$height, id=$id, isEdited=$isEdited, isFavorite=$isFavorite, libraryId=$libraryId, livePhotoVideoId=$livePhotoVideoId, localDateTime=$localDateTime, originalFileName=$originalFileName, ownerId=$ownerId, stackId=$stackId, thumbhash=$thumbhash, type=$type, visibility=$visibility, width=$width]';
+  String toString() => 'SyncAssetV1[checksum=$checksum, createdAt=$createdAt, deletedAt=$deletedAt, duration=$duration, fileCreatedAt=$fileCreatedAt, fileModifiedAt=$fileModifiedAt, height=$height, id=$id, isEdited=$isEdited, isFavorite=$isFavorite, libraryId=$libraryId, livePhotoVideoId=$livePhotoVideoId, localDateTime=$localDateTime, originalFileName=$originalFileName, ownerId=$ownerId, stackId=$stackId, thumbhash=$thumbhash, type=$type, visibility=$visibility, width=$width]';
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
@@ -156,6 +162,9 @@ class SyncAssetV1 {
       json[r'fileCreatedAt'] = this.fileCreatedAt!.toUtc().toIso8601String();
     } else {
     //  json[r'fileCreatedAt'] = null;
+    }
+    if (this.createdAt != null) {
+      json[r'createdAt'] = this.createdAt!.toUtc().toIso8601String();
     }
     if (this.fileModifiedAt != null) {
       json[r'fileModifiedAt'] = this.fileModifiedAt!.toUtc().toIso8601String();
@@ -221,6 +230,7 @@ class SyncAssetV1 {
         duration: mapValueOfType<String>(json, r'duration'),
         fileCreatedAt: mapDateTime(json, r'fileCreatedAt', r''),
         fileModifiedAt: mapDateTime(json, r'fileModifiedAt', r''),
+        createdAt: mapDateTime(json, r'createdAt', r''),
         height: mapValueOfType<int>(json, r'height'),
         id: mapValueOfType<String>(json, r'id')!,
         isEdited: mapValueOfType<bool>(json, r'isEdited')!,
