@@ -31,7 +31,6 @@ vite.config.js.timestamp-*
 
 # Local design notes for the "No Location" feature (not for upstream)
 /CONTEXT.md
-/docs/adr/
-/docs/plans/
+/docs/
 /.overnight/
 *.tsbuildinfo

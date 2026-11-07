@@ -945,11 +945,15 @@ export type AlongWithPersonResponseDto = {
     is what marks them out from the rest of the alumni. */
     sharedSubdetails: PersonDetailPairResponseDto[];
 };
-export type AlongWithResponseDto = {
+export type AlongWithGroupResponseDto = {
     people: AlongWithPersonResponseDto[];
     /** The size of the whole group, which is larger than `people` once the cap is reached. The count
     behind a `+N` is this, not the length of the list. */
     total: number;
+};
+export type AlongWithResponseDto = {
+    current: AlongWithGroupResponseDto;
+    past: AlongWithGroupResponseDto;
 };
 export type PersonSubdetailResponseDto = {
     id: string;
@@ -963,8 +967,19 @@ export type PersonDetailResponseDto = {
     createdAt: string;
     id: string;
     key: string;
+    /** The contact field this detail is, or null for a free-text one. */
+    kind: (PersonDetailKind) | null;
+    /** The pin of a Home or Work detail. Both set or both null. */
+    latitude: number | null;
+    longitude: number | null;
+    /** When the fact became true, snapped to the start of its year or month. Null when unknown. */
+    since: string | null;
+    sincePrecision: (PersonDetailDatePrecision) | null;
     sortOrder: number;
     subdetails: PersonSubdetailResponseDto[];
+    /** When the fact stopped being true. Null means Current, set means Past. */
+    until: string | null;
+    untilPrecision: (PersonDetailDatePrecision) | null;
     value: string;
 };
 export type PersonSubdetailUpsertDto = {
@@ -977,9 +992,26 @@ export type PersonDetailUpsertDto = {
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
+    /** The contact field this detail is, or absent/null for a free-text one. Only top-level details
+    take one: the subdetail type has no such field, so a kind sent on a subdetail is stripped. */
+    kind?: (PersonDetailKind) | null;
+    /** A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one. */
+    latitude?: number | null;
+    longitude?: number | null;
+    /** When the fact became true, as a full date. Snapped on write to the first day of the year or
+    month named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored. */
+    since?: string | null;
+    /** Defaults to month when `since` is given without one. */
+    sincePrecision?: (PersonDetailDatePrecision) | null;
     /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
     one level deep, which is why these carry no subdetails of their own. */
     subdetails?: PersonSubdetailUpsertDto[];
+    /** When the fact stopped being true. Set means Past, absent or null means Current — this is how a
+    whole-list save archives a row: the old row is sent back with `until` set, alongside a new row
+    without an id for the value that replaced it. */
+    until?: string | null;
+    /** Defaults to month when `until` is given without one. */
+    untilPrecision?: (PersonDetailDatePrecision) | null;
     value: string;
 };
 export type PersonDetailsUpdateDto = {
@@ -1001,11 +1033,21 @@ export type PersonStatisticsResponseDto = {
     assets: number;
 };
 export type PersonDetailBulkItemDto = {
+    /** How a replacement treats the value it replaces. True (the default) moves it to Past — `until`
+    set to this month, subdetails kept with it — and adds the new value as a fresh Current row.
+    False overwrites it in place, which loses the old value. */
+    archiveReplaced?: boolean;
     /** The row being edited. Absent on a subdetail that does not exist yet. */
     id?: string;
     key: string;
+    /** The contact field this detail is, or absent/null for a free-text one. Only top-level details
+    take one: the subdetail type has no such field, so a kind sent on a subdetail is stripped. */
+    kind?: (PersonDetailKind) | null;
+    /** A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one. */
+    latitude?: number | null;
+    longitude?: number | null;
     /** Who among the people named by the request should have their existing value under this key
-    overwritten rather than gaining a second row. Everyone else keeps what they had. */
+    replaced rather than gaining a second row. Everyone else keeps what they had. */
     replaceForPersonIds?: string[];
     /** What qualifies this detail rather than the person: "Class of" and "2016" under a school. Only
     one level deep, which is why these carry no subdetails of their own. */
@@ -1020,6 +1062,9 @@ export type PersonDetailsBulkAddDto = {
 export type PersonDetailConflictSearchDto = {
     /** Matched with casing ignored, the same way details are matched everywhere else. */
     keys: string[];
+    /** Contact-field kinds to look up as well. A kind conflicts on the kind, never on key text, and
+    a free-text key never conflicts with a kind row, so the two lists are asked about separately. */
+    kinds?: PersonDetailKind[];
     personIds: string[];
 };
 export type PersonDetailConflictPersonResponseDto = {
@@ -1028,8 +1073,11 @@ export type PersonDetailConflictPersonResponseDto = {
     value: string;
 };
 export type PersonDetailConflictResponseDto = {
-    /** The key as it was asked about, so the client can match a row to its answer. */
+    /** The key as it was asked about, so the client can match a row to its answer. For a kind
+    conflict this is the kind itself, and `kind` is set. */
     key: string;
+    /** The kind asked about, or null for a free-text key. */
+    kind: (PersonDetailKind) | null;
     people: PersonDetailConflictPersonResponseDto[];
 };
 export type PersonDetailSuggestionResponseDto = {
@@ -1172,6 +1220,67 @@ export type RelationshipUpdateDto = {
     subjectId: string;
     typeId: string;
 };
+export type SavedLocationResponseDto = {
+    createdAt: string;
+    id: string;
+    latitude: number;
+    longitude: number;
+    name: string;
+    updatedAt: string;
+};
+export type SavedLocationCreateDto = {
+    latitude: number;
+    longitude: number;
+    /** Trimmed before it is stored. A name that is blank once trimmed is refused. */
+    name: string;
+};
+export type SavedLocationsBulkCreateDto = {
+    /** Everything the browser had saved before saved locations moved to the server. An entry matching
+    one already stored — the same trimmed name and the same coordinates exactly — is skipped, so the
+    import can be sent again after a failed clear without doubling anything up. */
+    locations: SavedLocationCreateDto[];
+};
+export type PersonPlaceResponseDto = {
+    /** The detail row the pin is on. */
+    detailId: string;
+    /** No Until date: the person lives or works there now. Spelled out so the client never derives it. */
+    isCurrent: boolean;
+    /** The kind's name as the owner saved it, such as "Home" in their own language. */
+    key: string;
+    kind: PersonDetailKind;
+    latitude: number;
+    longitude: number;
+    personId: string;
+    /** Hidden people are still offered: the places are the owner's own record, not a face to show. */
+    personIsHidden: boolean;
+    personName: string;
+    /** The person's last change, which is what a face thumbnail URL is cache-busted with. */
+    personUpdatedAt: string;
+    since: string | null;
+    sincePrecision: (PersonDetailDatePrecision) | null;
+    until: string | null;
+    untilPrecision: (PersonDetailDatePrecision) | null;
+    /** The text of the field, such as "Rathmines" or a street address. */
+    value: string;
+};
+export type PlacesResponseDto = {
+    admin1name?: string;
+    admin2name?: string;
+    latitude: number;
+    longitude: number;
+    name: string;
+};
+export type LocationSearchResultDto = {
+    person?: PersonPlaceResponseDto;
+    place?: PlacesResponseDto;
+    saved?: SavedLocationResponseDto;
+    "type": LocationSearchResultType;
+};
+export type SavedLocationUpdateDto = {
+    latitude?: number;
+    longitude?: number;
+    name?: string;
+};
 export type SearchExploreItem = {
     data: AssetResponseDto;
     value: string;
@@ -1250,13 +1359,6 @@ export type SearchAssetResponseDto = {
 export type SearchResponseDto = {
     albums: SearchAlbumResponseDto;
     assets: SearchAssetResponseDto;
-};
-export type PlacesResponseDto = {
-    admin1name?: string;
-    admin2name?: string;
-    latitude: number;
-    longitude: number;
-    name: string;
 };
 export type RandomSearchDto = {
     albumIds?: string[];
@@ -3915,8 +4017,9 @@ export function getPersonDetailKeys({ limit, parentKey, term }: {
 /**
  * Suggest detail values
  */
-export function getPersonDetailValues({ detailKey, limit, parentKey, term }: {
-    detailKey: string;
+export function getPersonDetailValues({ detailKey, kind, limit, parentKey, term }: {
+    detailKey?: string;
+    kind?: PersonDetailKind;
     limit?: number;
     parentKey?: string;
     term?: string;
@@ -3926,6 +4029,7 @@ export function getPersonDetailValues({ detailKey, limit, parentKey, term }: {
         data: PersonDetailSuggestionResponseDto[];
     }>(`/person-details/values${QS.query(QS.explode({
         detailKey,
+        kind,
         limit,
         parentKey,
         term
@@ -4191,6 +4295,89 @@ export function updateRelationship({ id, relationshipUpdateDto }: {
         ...opts,
         method: "PUT",
         body: relationshipUpdateDto
+    })));
+}
+/**
+ * List saved locations
+ */
+export function getSavedLocations(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto[];
+    }>("/saved-locations", {
+        ...opts
+    }));
+}
+/**
+ * Save a location
+ */
+export function createSavedLocation({ savedLocationCreateDto }: {
+    savedLocationCreateDto: SavedLocationCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: SavedLocationResponseDto;
+    }>("/saved-locations", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: savedLocationCreateDto
+    })));
+}
+/**
+ * Save several locations
+ */
+export function createSavedLocations({ savedLocationsBulkCreateDto }: {
+    savedLocationsBulkCreateDto: SavedLocationsBulkCreateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto[];
+    }>("/saved-locations/bulk", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: savedLocationsBulkCreateDto
+    })));
+}
+/**
+ * Search locations to pick
+ */
+export function searchLocations({ query }: {
+    query?: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: LocationSearchResultDto[];
+    }>(`/saved-locations/search${QS.query(QS.explode({
+        query
+    }))}`, {
+        ...opts
+    }));
+}
+/**
+ * Delete a saved location
+ */
+export function deleteSavedLocation({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchText(`/saved-locations/${encodeURIComponent(id)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * Update a saved location
+ */
+export function updateSavedLocation({ id, savedLocationUpdateDto }: {
+    id: string;
+    savedLocationUpdateDto: SavedLocationUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: SavedLocationResponseDto;
+    }>(`/saved-locations/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: savedLocationUpdateDto
     })));
 }
 /**
@@ -5752,6 +5939,10 @@ export enum Permission {
     RelationshipTypeDelete = "relationshipType.delete",
     PersonDetailRead = "personDetail.read",
     PersonDetailUpdate = "personDetail.update",
+    SavedLocationCreate = "savedLocation.create",
+    SavedLocationRead = "savedLocation.read",
+    SavedLocationUpdate = "savedLocation.update",
+    SavedLocationDelete = "savedLocation.delete",
     ServerAbout = "server.about",
     ServerApkLinks = "server.apkLinks",
     ServerStorage = "server.storage",
@@ -5891,6 +6082,16 @@ export enum PartnerDirection {
     SharedBy = "shared-by",
     SharedWith = "shared-with"
 }
+export enum PersonDetailKind {
+    Work = "work",
+    Home = "home",
+    Email = "email",
+    Phone = "phone"
+}
+export enum PersonDetailDatePrecision {
+    Year = "year",
+    Month = "month"
+}
 export enum PluginContext {
     Asset = "asset",
     Album = "album",
@@ -5964,6 +6165,11 @@ export enum JobName {
 export enum RelationshipGender {
     Male = "male",
     Female = "female"
+}
+export enum LocationSearchResultType {
+    Saved = "saved",
+    Person = "person",
+    Place = "place"
 }
 export enum SearchSuggestionType {
     Country = "country",

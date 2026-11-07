@@ -7,7 +7,14 @@ select
   "key",
   "value",
   "sortOrder",
-  "createdAt"
+  "createdAt",
+  "since",
+  "sincePrecision",
+  "until",
+  "untilPrecision",
+  "kind",
+  "latitude",
+  "longitude"
 from
   "person_detail"
 where
@@ -20,11 +27,23 @@ order by
 with
   "matched" as (
     select
-      lower(detail."key") as "key",
+      case
+        when "detail"."kind" is null then lower("detail"."key")
+        else chr(1) || "detail"."kind"
+      end as "key",
       lower(detail."value") as "value",
       "detail"."id" as "detailId",
       "person"."id" as "personId",
-      "person"."name" as "name"
+      "person"."name" as "name",
+      bool_or(detail."until" is null) over (
+        partition by
+          case
+            when "detail"."kind" is null then lower("detail"."key")
+            else chr(1) || "detail"."kind"
+          end,
+          lower(detail."value"),
+          person.id
+      ) as "isCurrent"
     from
       "person_detail" as "detail"
       inner join "person" on "person"."id" = "detail"."personId"
@@ -32,20 +51,43 @@ with
       "detail"."ownerId" = $1
       and "detail"."personId" != $2
       and "detail"."parentId" is null
-      and (lower(detail."key"), lower(detail."value")) in (
-        select
-          lower("key"),
-          lower("value")
-        from
-          "person_detail"
-        where
-          "personId" = $3
-          and "parentId" is null
+      and (
+        (
+          detail."kind" is null
+          and (lower(detail."key"), lower(detail."value")) in (
+            select
+              lower("key"),
+              lower("value")
+            from
+              "person_detail"
+            where
+              "personId" = $3
+              and "parentId" is null
+              and "kind" is null
+          )
+        )
+        or (
+          detail."kind" is not null
+          and (detail."kind", lower(detail."value")) in (
+            select
+              "kind",
+              lower("value")
+            from
+              "person_detail"
+            where
+              "personId" = $4
+              and "parentId" is null
+              and "kind" is not null
+          )
+        )
       )
   ),
   "subject" as (
     select
-      lower(parent."key") as "key",
+      case
+        when "parent"."kind" is null then lower("parent"."key")
+        else chr(1) || "parent"."kind"
+      end as "key",
       lower(parent."value") as "value",
       lower(sub."key") as "subKey",
       lower(sub."value") as "subValue"
@@ -53,7 +95,7 @@ with
       "person_detail" as "parent"
       inner join "person_detail" as "sub" on "sub"."parentId" = "parent"."id"
     where
-      "parent"."personId" = $4
+      "parent"."personId" = $5
       and "parent"."parentId" is null
   ),
   "overlap" as (
@@ -90,6 +132,7 @@ with
       "matched"."value" as "value",
       "matched"."personId" as "personId",
       "matched"."name" as "name",
+      "matched"."isCurrent" as "isCurrent",
       coalesce("overlapCounts"."subShared", 0) as "subShared",
       coalesce("overlapCounts"."subKeys", '{}') as "subKeys",
       coalesce("overlapCounts"."subValues", '{}') as "subValues"
@@ -122,7 +165,8 @@ with
       row_number() over (
         partition by
           "key",
-          "value"
+          "value",
+          "isCurrent"
         order by
           "subShared" desc,
           "shared" desc,
@@ -132,7 +176,8 @@ with
       count(*) over (
         partition by
           "key",
-          "value"
+          "value",
+          "isCurrent"
       ) as "total"
     from
       "scored"
@@ -142,10 +187,11 @@ select
 from
   "ranked"
 where
-  "rank" <= $5
+  "rank" <= $6
 order by
   "key",
   "value",
+  "isCurrent" desc,
   "rank"
 
 -- PersonDetailRepository.getKeySuggestions
@@ -158,6 +204,7 @@ with
       "person_detail" as "detail"
     where
       "detail"."ownerId" = $1
+      and "detail"."kind" is null
       and "detail"."parentId" is null
       and "detail"."key" ilike $2
     group by
@@ -204,6 +251,7 @@ with
     where
       "detail"."ownerId" = $1
       and lower(detail."key") = $2
+      and "detail"."kind" is null
       and "detail"."parentId" is null
       and "detail"."value" ilike $3
     group by
@@ -241,7 +289,16 @@ limit
 
 -- PersonDetailRepository.getConflicts
 select distinct
-  on (lower(detail."key"), "detail"."personId") lower(detail."key") as "key",
+  on (
+    case
+      when "detail"."kind" is null then lower("detail"."key")
+      else chr(1) || "detail"."kind"
+    end,
+    "detail"."personId"
+  ) case
+    when detail."kind" is null then lower(detail."key")
+  end as "key",
+  "detail"."kind" as "kind",
   "person"."id" as "personId",
   "person"."name" as "name",
   "detail"."id" as "detailId",
@@ -253,9 +310,19 @@ where
   "detail"."ownerId" = $1
   and "detail"."personId" in ($2)
   and "detail"."parentId" is null
-  and lower(detail."key") in ($3)
+  and "detail"."until" is null
+  and (
+    (
+      "detail"."kind" is null
+      and lower(detail."key") in ($3)
+    )
+    or "detail"."kind" in ($4)
+  )
 order by
-  lower(detail."key"),
+  case
+    when "detail"."kind" is null then lower("detail"."key")
+    else chr(1) || "detail"."kind"
+  end,
   "detail"."personId",
   "detail"."sortOrder",
   "detail"."createdAt"

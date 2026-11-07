@@ -207,6 +207,11 @@ export enum Permission {
   PersonDetailRead = 'personDetail.read',
   PersonDetailUpdate = 'personDetail.update',
 
+  SavedLocationCreate = 'savedLocation.create',
+  SavedLocationRead = 'savedLocation.read',
+  SavedLocationUpdate = 'savedLocation.update',
+  SavedLocationDelete = 'savedLocation.delete',
+
   ServerAbout = 'server.about',
   ServerApkLinks = 'server.apkLinks',
   ServerStorage = 'server.storage',
@@ -869,6 +874,7 @@ export enum ApiTag {
   Plugins = 'Plugins',
   Queues = 'Queues',
   Relationships = 'Relationships',
+  SavedLocations = 'SavedLocations',
   Search = 'Search',
   Server = 'Server',
   Sessions = 'Sessions',
@@ -895,4 +901,35 @@ export enum PluginContext {
 export enum PluginTriggerType {
   AssetCreate = 'AssetCreate',
   PersonRecognized = 'PersonRecognized',
+}
+
+/**
+ * How much of a detail's Since or Until date is meaningful. The stored date is always a full date,
+ * snapped to the first day of the year or month, so this is what stops it being read as "1 Jan".
+ */
+export enum PersonDetailDatePrecision {
+  Year = 'year',
+  Month = 'month',
+}
+
+/**
+ * The reserved kinds a detail can have, which make it a contact field with a fixed chip in the
+ * person's header. Free-text details have none. Code reads this, never the key text, since the key
+ * of a kind row is just the kind's name in whatever language the owner saved it in.
+ */
+export enum PersonDetailKind {
+  Work = 'work',
+  Home = 'home',
+  Email = 'email',
+  Phone = 'phone',
+}
+
+/** Which of the location picker's three sources a search result came from. */
+export enum LocationSearchResultType {
+  /** A pin the owner saved and named themselves. */
+  Saved = 'saved',
+  /** A pinned Home or Work contact field on one of the owner's people. */
+  Person = 'person',
+  /** A GeoNames place from the reverse-geocoding data. */
+  Place = 'place',
 }

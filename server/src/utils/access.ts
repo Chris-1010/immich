@@ -298,6 +298,12 @@ const checkOtherAccess = async (access: AccessRepository, request: OtherAccessRe
       return access.relationshipType.checkOwnerAccess(auth.user.id, ids);
     }
 
+    case Permission.SavedLocationRead:
+    case Permission.SavedLocationUpdate:
+    case Permission.SavedLocationDelete: {
+      return access.savedLocation.checkOwnerAccess(auth.user.id, ids);
+    }
+
     case Permission.SessionRead:
     case Permission.SessionUpdate:
     case Permission.SessionDelete:

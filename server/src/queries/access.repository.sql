@@ -208,6 +208,33 @@ where
   "partner"."sharedById" in ($1)
   and "partner"."sharedWithId" = $2
 
+-- AccessRepository.relationship.checkOwnerAccess
+select
+  "person_relationship"."id"
+from
+  "person_relationship"
+where
+  "person_relationship"."id" in ($1)
+  and "person_relationship"."ownerId" = $2
+
+-- AccessRepository.relationshipType.checkOwnerAccess
+select
+  "relationship_type"."id"
+from
+  "relationship_type"
+where
+  "relationship_type"."id" in ($1)
+  and "relationship_type"."ownerId" = $2
+
+-- AccessRepository.savedLocation.checkOwnerAccess
+select
+  "saved_location"."id"
+from
+  "saved_location"
+where
+  "saved_location"."id" in ($1)
+  and "saved_location"."ownerId" = $2
+
 -- AccessRepository.session.checkOwnerAccess
 select
   "session"."id"

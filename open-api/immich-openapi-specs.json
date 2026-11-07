@@ -8289,11 +8289,20 @@
         "parameters": [
           {
             "name": "detailKey",
-            "required": true,
+            "required": false,
             "in": "query",
             "description": "The key whose values are wanted, since \"Cork\" means nothing without \"Hometown\" above it.\n\nNamed `detailKey` rather than `key`: a query parameter called `key` is how a shared link\nannounces itself, so the guard would try to log the request in as one and turn a search for\n\"Secondary School\" into \"Invalid share key\" before the controller ever ran.",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "description": "The contact-field kind whose values are wanted, in place of `detailKey`: kind rows are matched\non kind, whatever key text they were saved under. One of the two is required.",
+            "schema": {
+              "$ref": "#/components/schemas/PersonDetailKind"
             }
           },
           {
@@ -9462,6 +9471,341 @@
           }
         ],
         "x-immich-permission": "relationship.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/saved-locations": {
+      "get": {
+        "description": "Retrieve every saved location belonging to the authenticated user, in name order.",
+        "operationId": "getSavedLocations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedLocationResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List saved locations",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.read",
+        "x-immich-state": "Alpha"
+      },
+      "post": {
+        "description": "Save a named pin. The name is trimmed and must not be blank.",
+        "operationId": "createSavedLocation",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedLocationCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedLocationResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Save a location",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/saved-locations/bulk": {
+      "post": {
+        "description": "Save many named pins at once, for moving locations saved in the browser onto the server. An entry with the same trimmed name and exactly the same coordinates as one already saved, or as an earlier entry in the same request, is skipped, so sending the same list twice saves it once. Entries with a blank name are dropped. Every saved location the user now has is returned.",
+        "operationId": "createSavedLocations",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedLocationsBulkCreateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedLocationResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Save several locations",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.create",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/saved-locations/search": {
+      "get": {
+        "description": "Search everything the location picker offers as one ordered list: saved locations whose name contains the query, then people's places (pinned Home and Work contact fields whose person name, kind, label or value contains the query, current ones ahead of past ones), then GeoNames places. Matching ignores case and accents. Each row is tagged with its `type` and carries only the object that type names. With no query, only saved locations and current people's places are returned.",
+        "operationId": "searchLocations",
+        "parameters": [
+          {
+            "name": "query",
+            "required": false,
+            "in": "query",
+            "description": "What the user has typed. Blank or missing means nothing typed yet: the picker is then offered\nthe saved locations and everyone's current places, and no GeoNames places, since there is no\nname to look one up by.",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocationSearchResultDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Search locations to pick",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/saved-locations/{id}": {
+      "delete": {
+        "description": "Delete a saved location.",
+        "operationId": "deleteSavedLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a saved location",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.delete",
+        "x-immich-state": "Alpha"
+      },
+      "put": {
+        "description": "Rename a saved location, move it, or both. Latitude and longitude are moved together; anything left out keeps its value.",
+        "operationId": "updateSavedLocation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedLocationUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedLocationResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a saved location",
+        "tags": [
+          "SavedLocations"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "savedLocation.update",
         "x-immich-state": "Alpha"
       }
     },
@@ -15493,6 +15837,10 @@
       "description": "A relationship is a directed link between two people, carrying exactly one relationship type. It is stored once and read from both ends: the subject sees the counterpart labelled with the type, and the counterpart sees the subject labelled with that type's inverse. Every type has an inverse, and a type whose inverse is itself is symmetric."
     },
     {
+      "name": "SavedLocations",
+      "description": "A saved location is a named pin kept for the location picker, such as \"Gran's house\", so a place can be found again by name. The picker's search also offers the pinned Home and Work contact fields of the user's people, current ones ahead of past ones, followed by GeoNames places."
+    },
+    {
       "name": "Search",
       "description": "Endpoints related to searching assets via text, smart search, optical character recognition (OCR), and other filters like person, album, and other metadata. Search endpoints usually support pagination and sorting."
     },
@@ -16014,6 +16362,25 @@
         },
         "type": "object"
       },
+      "AlongWithGroupResponseDto": {
+        "properties": {
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/AlongWithPersonResponseDto"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "The size of the whole group, which is larger than `people` once the cap is reached. The count\nbehind a `+N` is this, not the length of the list.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "people",
+          "total"
+        ],
+        "type": "object"
+      },
       "AlongWithPersonResponseDto": {
         "properties": {
           "id": {
@@ -16047,20 +16414,16 @@
       },
       "AlongWithResponseDto": {
         "properties": {
-          "people": {
-            "items": {
-              "$ref": "#/components/schemas/AlongWithPersonResponseDto"
-            },
-            "type": "array"
+          "current": {
+            "$ref": "#/components/schemas/AlongWithGroupResponseDto"
           },
-          "total": {
-            "description": "The size of the whole group, which is larger than `people` once the cap is reached. The count\nbehind a `+N` is this, not the length of the list.",
-            "type": "integer"
+          "past": {
+            "$ref": "#/components/schemas/AlongWithGroupResponseDto"
           }
         },
         "required": [
-          "people",
-          "total"
+          "current",
+          "past"
         ],
         "type": "object"
       },
@@ -18029,6 +18392,38 @@
         ],
         "type": "object"
       },
+      "LocationSearchResultDto": {
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/PersonPlaceResponseDto"
+          },
+          "place": {
+            "$ref": "#/components/schemas/PlacesResponseDto"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/SavedLocationResponseDto"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationSearchResultType"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "LocationSearchResultType": {
+        "enum": [
+          "saved",
+          "person",
+          "place"
+        ],
+        "type": "string"
+      },
       "LogLevel": {
         "enum": [
           "verbose",
@@ -19152,6 +19547,10 @@
           "relationshipType.delete",
           "personDetail.read",
           "personDetail.update",
+          "savedLocation.create",
+          "savedLocation.read",
+          "savedLocation.update",
+          "savedLocation.delete",
           "server.about",
           "server.apkLinks",
           "server.storage",
@@ -19248,6 +19647,11 @@
       },
       "PersonDetailBulkItemDto": {
         "properties": {
+          "archiveReplaced": {
+            "default": true,
+            "description": "How a replacement treats the value it replaces. True (the default) moves it to Past — `until`\nset to this month, subdetails kept with it — and adds the new value as a fresh Current row.\nFalse overwrites it in place, which loses the old value.",
+            "type": "boolean"
+          },
           "id": {
             "description": "The row being edited. Absent on a subdetail that does not exist yet.",
             "format": "uuid",
@@ -19257,8 +19661,26 @@
             "maxLength": 1000,
             "type": "string"
           },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or absent/null for a free-text one. Only top-level details\ntake one: the subdetail type has no such field, so a kind sent on a subdetail is stripped.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one.",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "nullable": true,
+            "type": "number"
+          },
           "replaceForPersonIds": {
-            "description": "Who among the people named by the request should have their existing value under this key\noverwritten rather than gaining a second row. Everyone else keeps what they had.",
+            "description": "Who among the people named by the request should have their existing value under this key\nreplaced rather than gaining a second row. Everyone else keeps what they had.",
             "items": {
               "format": "uuid",
               "type": "string"
@@ -19305,8 +19727,17 @@
       "PersonDetailConflictResponseDto": {
         "properties": {
           "key": {
-            "description": "The key as it was asked about, so the client can match a row to its answer.",
+            "description": "The key as it was asked about, so the client can match a row to its answer. For a kind\nconflict this is the kind itself, and `kind` is set.",
             "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The kind asked about, or null for a free-text key.",
+            "nullable": true
           },
           "people": {
             "items": {
@@ -19317,6 +19748,7 @@
         },
         "required": [
           "key",
+          "kind",
           "people"
         ],
         "type": "object"
@@ -19328,6 +19760,13 @@
             "items": {
               "maxLength": 1000,
               "type": "string"
+            },
+            "type": "array"
+          },
+          "kinds": {
+            "description": "Contact-field kinds to look up as well. A kind conflicts on the kind, never on key text, and\na free-text key never conflicts with a kind row, so the two lists are asked about separately.",
+            "items": {
+              "$ref": "#/components/schemas/PersonDetailKind"
             },
             "type": "array"
           },
@@ -19345,6 +19784,23 @@
           "personIds"
         ],
         "type": "object"
+      },
+      "PersonDetailDatePrecision": {
+        "enum": [
+          "year",
+          "month"
+        ],
+        "type": "string"
+      },
+      "PersonDetailKind": {
+        "description": "The contact field this detail is, or null for a free-text one.",
+        "enum": [
+          "work",
+          "home",
+          "email",
+          "phone"
+        ],
+        "type": "string"
       },
       "PersonDetailPairResponseDto": {
         "properties": {
@@ -19377,6 +19833,40 @@
           "key": {
             "type": "string"
           },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or null for a free-text one.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "The pin of a Home or Work detail. Both set or both null.",
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "nullable": true,
+            "type": "number"
+          },
+          "since": {
+            "description": "When the fact became true, snapped to the start of its year or month. Null when unknown.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "sincePrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
+          },
           "sortOrder": {
             "type": "integer"
           },
@@ -19385,6 +19875,20 @@
               "$ref": "#/components/schemas/PersonSubdetailResponseDto"
             },
             "type": "array"
+          },
+          "until": {
+            "description": "When the fact stopped being true. Null means Current, set means Past.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "untilPrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
           },
           "value": {
             "type": "string"
@@ -19395,8 +19899,15 @@
           "createdAt",
           "id",
           "key",
+          "kind",
+          "latitude",
+          "longitude",
+          "since",
+          "sincePrecision",
           "sortOrder",
           "subdetails",
+          "until",
+          "untilPrecision",
           "value"
         ],
         "type": "object"
@@ -19427,12 +19938,60 @@
             "maxLength": 1000,
             "type": "string"
           },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ],
+            "description": "The contact field this detail is, or absent/null for a free-text one. Only top-level details\ntake one: the subdetail type has no such field, so a kind sent on a subdetail is stripped.",
+            "nullable": true
+          },
+          "latitude": {
+            "description": "A pin for a Home or Work detail. Both coordinates or neither; any other kind is refused one.",
+            "nullable": true,
+            "type": "number"
+          },
+          "longitude": {
+            "nullable": true,
+            "type": "number"
+          },
+          "since": {
+            "description": "When the fact became true, as a full date. Snapped on write to the first day of the year or\nmonth named by `sincePrecision`, so the day (and for a year, the month) sent here is ignored.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "sincePrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "description": "Defaults to month when `since` is given without one.",
+            "nullable": true
+          },
           "subdetails": {
             "description": "What qualifies this detail rather than the person: \"Class of\" and \"2016\" under a school. Only\none level deep, which is why these carry no subdetails of their own.",
             "items": {
               "$ref": "#/components/schemas/PersonSubdetailUpsertDto"
             },
             "type": "array"
+          },
+          "until": {
+            "description": "When the fact stopped being true. Set means Past, absent or null means Current — this is how a\nwhole-list save archives a row: the old row is sent back with `until` set, alongside a new row\nwithout an id for the value that replaced it.",
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "untilPrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "description": "Defaults to month when `until` is given without one.",
+            "nullable": true
           },
           "value": {
             "maxLength": 1000,
@@ -19500,6 +20059,100 @@
         "required": [
           "gender",
           "personId"
+        ],
+        "type": "object"
+      },
+      "PersonPlaceResponseDto": {
+        "properties": {
+          "detailId": {
+            "description": "The detail row the pin is on.",
+            "type": "string"
+          },
+          "isCurrent": {
+            "description": "No Until date: the person lives or works there now. Spelled out so the client never derives it.",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "The kind's name as the owner saved it, such as \"Home\" in their own language.",
+            "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailKind"
+              }
+            ]
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "personIsHidden": {
+            "description": "Hidden people are still offered: the places are the owner's own record, not a face to show.",
+            "type": "boolean"
+          },
+          "personName": {
+            "type": "string"
+          },
+          "personUpdatedAt": {
+            "description": "The person's last change, which is what a face thumbnail URL is cache-busted with.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "since": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "sincePrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
+          },
+          "until": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "untilPrecision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonDetailDatePrecision"
+              }
+            ],
+            "nullable": true
+          },
+          "value": {
+            "description": "The text of the field, such as \"Rathmines\" or a street address.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detailId",
+          "isCurrent",
+          "key",
+          "kind",
+          "latitude",
+          "longitude",
+          "personId",
+          "personIsHidden",
+          "personName",
+          "personUpdatedAt",
+          "since",
+          "sincePrecision",
+          "until",
+          "untilPrecision",
+          "value"
         ],
         "type": "object"
       },
@@ -20708,6 +21361,96 @@
         "required": [
           "lastImportFileName",
           "lastUpdate"
+        ],
+        "type": "object"
+      },
+      "SavedLocationCreateDto": {
+        "properties": {
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "description": "Trimmed before it is stored. A name that is blank once trimmed is refused.",
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SavedLocationResponseDto": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "latitude",
+          "longitude",
+          "name",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "SavedLocationUpdateDto": {
+        "properties": {
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "maxLength": 200,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SavedLocationsBulkCreateDto": {
+        "properties": {
+          "locations": {
+            "description": "Everything the browser had saved before saved locations moved to the server. An entry matching\none already stored — the same trimmed name and the same coordinates exactly — is skipped, so the\nimport can be sent again after a failed clear without doubling anything up.",
+            "items": {
+              "$ref": "#/components/schemas/SavedLocationCreateDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "locations"
         ],
         "type": "object"
       },

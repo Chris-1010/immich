@@ -5,15 +5,25 @@
   import { listNavigation } from '$lib/actions/list-navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import ImageThumbnail from '$lib/components/assets/thumbnail/image-thumbnail.svelte';
+  import ChangeLocation from '$lib/components/shared-components/change-location.svelte';
   import EditNameInput from '$lib/components/faces-page/edit-name-input.svelte';
   import { setPersonPageContext } from '$lib/components/faces-page/person-page-context';
+  import PersonContactChips from '$lib/components/faces-page/person-contact-chips.svelte';
   import PersonDetailsBox from '$lib/components/faces-page/person-details-box.svelte';
+  import PersonHeaderCarousel from '$lib/components/faces-page/person-header-carousel.svelte';
   import { AppRoute, PersonPageViewMode, QueryParameter, SessionStorageKey } from '$lib/constants';
+  import ContactFieldModal from '$lib/modals/ContactFieldModal.svelte';
   import PersonDetailsModal from '$lib/modals/PersonDetailsModal.svelte';
+  import PersonEditBirthDateModal from '$lib/modals/PersonEditBirthDateModal.svelte';
   import PersonMergeSuggestionModal from '$lib/modals/PersonMergeSuggestionModal.svelte';
-  import { locale } from '$lib/stores/preferences.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { getPeopleThumbnailUrl, handlePromiseError } from '$lib/utils';
+  import {
+    asEndedPayload,
+    resolvePinName,
+    type ContactFieldPin,
+    type ContactFieldRow,
+  } from '$lib/utils/contact-fields';
   import { handleError } from '$lib/utils/handle-error';
   import { isExternalUrl } from '$lib/utils/navigation';
   import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
@@ -21,13 +31,14 @@
     getPersonStatistics,
     searchPerson,
     updatePerson,
+    updatePersonDetails,
+    type PersonDetailKind,
     type PersonDetailResponseDto,
     type PersonResponseDto,
     type RelationshipGender,
   } from '@immich/sdk';
   import { Icon, LoadingSpinner, modalManager, toastManager } from '@immich/ui';
   import { mdiAccountMultipleOutline, mdiImageMultipleOutline } from '@mdi/js';
-  import { DateTime } from 'luxon';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
   import type { LayoutData } from './$types';
@@ -124,6 +135,64 @@
     const saved = await modalManager.show(PersonDetailsModal, { personId: person.id, details });
     if (saved) {
       details = saved;
+    }
+  };
+
+  /**
+   * "Set pin" on a Home or Work row: the asset location picker in its point mode, opened on the
+   * row's pin when it has one. Only coordinates come back from it, so a blank row is named here, and
+   * the editor fills the value from that name only while the value is still blank, falling back to
+   * the address if the value is cleared again.
+   */
+  const handleSetPin = async (row: ContactFieldRow): Promise<ContactFieldPin | undefined> => {
+    const point =
+      row.latitude !== null && row.longitude !== null ? { lat: row.latitude, lng: row.longitude } : undefined;
+    const result = await modalManager.show(ChangeLocation, { pointOnly: true, point });
+    if (result?.type !== 'coordinates') {
+      return;
+    }
+
+    const { lat: latitude, lng: longitude } = result.point;
+    // The address is looked up even when a saved location or search result was picked, so a value
+    // cleared of that name still saves under where the pin is rather than being dropped.
+    const address = await resolvePinName(latitude, longitude);
+    const name = row.value.trim() ? undefined : result.name?.trim() || address;
+    return { latitude, longitude, name, address };
+  };
+
+  /** A chip's way into its editor. Each kind is edited on its own, apart from the free-text list. */
+  const handleEditContactField = async (kind: PersonDetailKind) => {
+    const saved = await modalManager.show(ContactFieldModal, {
+      personId: person.id,
+      kind,
+      details,
+      onSetPin: handleSetPin,
+    });
+    if (saved) {
+      details = saved;
+    }
+  };
+
+  /**
+   * End from a chip's popover: the value stopped holding this month. The rest of the list goes back
+   * exactly as it came, since the save replaces the whole of it.
+   */
+  const handleEndContactField = async (detail: PersonDetailResponseDto) => {
+    try {
+      details = await updatePersonDetails({
+        id: person.id,
+        personDetailsUpdateDto: { details: asEndedPayload(details, detail.id) },
+      });
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_save_details'));
+    }
+  };
+
+  /** The birthday chip opens the same modal the photos page menu has always used for it. */
+  const handleEditBirthDate = async () => {
+    const updated = await modalManager.show(PersonEditBirthDateModal, { person });
+    if (updated) {
+      person = updated;
     }
   };
 
@@ -282,7 +351,11 @@
     <!-- The details box is a sibling of the name block, not a child of it: the block cancels name
          editing on any click outside itself and on Escape, and nesting the box inside would hand
          those clicks and that Escape to the name editor instead of to the box and its popover. -->
-    <div class="flex w-full shrink-0 flex-col sm:flex-row sm:place-items-stretch">
+    <!-- Positioned for the carousel but deliberately without a z-index or isolate: its negative layer
+         resolves against main, and a stacking context here would trap the popovers and name
+         suggestions beneath the tabs and timeline that follow. -->
+    <div class="relative flex w-full shrink-0 flex-col sm:flex-row sm:place-items-stretch">
+      <PersonHeaderCarousel personId={person.id} assetCount={numberOfAssets} />
       <div
         class="relative w-fit shrink-0 p-4 sm:px-6 pt-12"
         use:clickOutside={{
@@ -323,27 +396,25 @@
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {$t('assets_count', { values: { count: numberOfAssets } })}
                   </p>
-                  {#if person.birthDate}
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {$t('person_birthdate', {
-                        values: {
-                          date: DateTime.fromISO(person.birthDate).toLocaleString(
-                            {
-                              month: 'numeric',
-                              day: 'numeric',
-                              year: 'numeric',
-                            },
-                            { locale: $locale },
-                          ),
-                        },
-                      })}
-                    </p>
-                  {/if}
                 </div>
               </button>
             </div>
           {/if}
         </section>
+        <!-- Under the name rather than inside its button: each chip is a button of its own, and a
+             button cannot hold another. Indented to line up with the name past the thumbnail. -->
+        {#if !isEditingName}
+          <div class="ps-[4.375rem] pt-1 w-64 sm:w-96">
+            <PersonContactChips
+              {person}
+              {details}
+              {genders}
+              onEdit={handleEditContactField}
+              onEnd={handleEndContactField}
+              onEditBirthDate={handleEditBirthDate}
+            />
+          </div>
+        {/if}
         {#if isEditingName}
           <div class="absolute w-64 sm:w-96 z-1">
             {#if isSearchingPeople}

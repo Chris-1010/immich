@@ -28,6 +28,7 @@ import { PersonService } from 'src/services/person.service';
 import { PluginService } from 'src/services/plugin.service';
 import { QueueService } from 'src/services/queue.service';
 import { RelationshipService } from 'src/services/relationship.service';
+import { SavedLocationService } from 'src/services/saved-location.service';
 import { SearchService } from 'src/services/search.service';
 import { ServerService } from 'src/services/server.service';
 import { SessionService } from 'src/services/session.service';
@@ -80,6 +81,7 @@ export const services = [
   PluginService,
   QueueService,
   RelationshipService,
+  SavedLocationService,
   SearchService,
   ServerService,
   SessionService,
