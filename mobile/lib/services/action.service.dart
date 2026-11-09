@@ -167,6 +167,7 @@ class ActionService {
       initialLatLng: initialLatLng,
       noLocationMode: noLocationMode,
       assetDate: assetDate,
+      assetId: remoteIds.length == 1 ? remoteIds[0] : null,
     );
 
     if (result == null) {

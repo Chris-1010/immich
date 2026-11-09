@@ -82,6 +82,9 @@ enum StoreKey<T> {
   // Main timeline settings
   timelineSortByDateAdded<bool>._(143),
 
+  // Location picker: JSON list of the people's places picked most recently, newest first
+  recentPersonPlaces<String>._(144),
+
   // Experimental stuff
   photoManagerCustomFilter<bool>._(1000),
   betaPromptShown<bool>._(1001),

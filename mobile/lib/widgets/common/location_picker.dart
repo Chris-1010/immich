@@ -1,16 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_hooks/flutter_hooks.dart' hide Store;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/saved_location.model.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/extensions/asyncvalue_extensions.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/maplibrecontroller_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/images/remote_image_provider.dart';
+import 'package:immich_mobile/providers/api.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
 import 'package:immich_mobile/providers/saved_location.provider.dart';
 import 'package:immich_mobile/repositories/saved_location_api.repository.dart';
@@ -59,17 +63,23 @@ class PickedNoLocation extends LocationPickerResult {
 /// Opens the full-screen picker: a map to drop a pin on, one search over saved locations, people's
 /// places and map places, and the user's saved locations. [assetDate] is the date of the asset being
 /// located, where there is one, so From image opens the timeline at photos taken around then.
+/// [assetId] is that asset's remote id, so the places of the people in it are suggested first.
 Future<LocationPickerResult?> pickLocation({
   required BuildContext context,
   LatLng? initialLatLng,
   NoLocationMode noLocationMode = NoLocationMode.none,
   DateTime? assetDate,
+  String? assetId,
 }) {
   return Navigator.of(context, rootNavigator: true).push<LocationPickerResult>(
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) =>
-          _LocationPickerPage(initialLatLng: initialLatLng, noLocationMode: noLocationMode, assetDate: assetDate),
+      builder: (_) => _LocationPickerPage(
+        initialLatLng: initialLatLng,
+        noLocationMode: noLocationMode,
+        assetDate: assetDate,
+        assetId: assetId,
+      ),
     ),
   );
 }
@@ -84,8 +94,9 @@ class _LocationPickerPage extends HookConsumerWidget {
   final LatLng? initialLatLng;
   final NoLocationMode noLocationMode;
   final DateTime? assetDate;
+  final String? assetId;
 
-  const _LocationPickerPage({required this.initialLatLng, required this.noLocationMode, this.assetDate});
+  const _LocationPickerPage({required this.initialLatLng, required this.noLocationMode, this.assetDate, this.assetId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,6 +107,7 @@ class _LocationPickerPage extends HookConsumerWidget {
     final searchController = useTextEditingController();
     final searchFocus = useFocusNode();
     final searchFocused = useState(false);
+    final detectedPeople = useMemoized(() => _peopleInAsset(ref, assetId), [assetId]);
 
     useEffect(() {
       void listener() => searchFocused.value = searchFocus.hasFocus;
@@ -129,6 +141,9 @@ class _LocationPickerPage extends HookConsumerWidget {
     }
 
     void selectResult(LocationSearchResult result) {
+      if (result is PersonPlaceResult) {
+        unawaited(_rememberPersonPlace(result.place));
+      }
       searchFocus.unfocus();
       searchController.clear();
       unawaited(select(result.latLng, label: result.label, zoomIn: true));
@@ -277,7 +292,11 @@ class _LocationPickerPage extends HookConsumerWidget {
                     ),
                     if (hasSearchPanel)
                       Flexible(
-                        child: _SearchResults(query: searchController, onSelected: selectResult),
+                        child: _SearchResults(
+                          query: searchController,
+                          detectedPeople: detectedPeople,
+                          onSelected: selectResult,
+                        ),
                       ),
                   ],
                 ),
@@ -355,13 +374,14 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-/// The combined search, refreshed as the user types. An empty field lists saved locations and
-/// people's current places.
+/// The combined search, refreshed as the user types. An empty field lists saved locations, then
+/// the places of the people in the asset, then the people's places picked most recently.
 class _SearchResults extends HookConsumerWidget {
   final TextEditingController query;
+  final Future<Set<String>> detectedPeople;
   final void Function(LocationSearchResult) onSelected;
 
-  const _SearchResults({required this.query, required this.onSelected});
+  const _SearchResults({required this.query, required this.detectedPeople, required this.onSelected});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -377,20 +397,21 @@ class _SearchResults extends HookConsumerWidget {
     useEffect(() {
       var cancelled = false;
       results.value = const AsyncLoading();
-      ref
-          .read(savedLocationApiRepositoryProvider)
-          .search(debounced.value)
-          .then(
-            (rows) {
-              if (!cancelled) results.value = AsyncData(rows);
-            },
-            onError: (Object error, StackTrace stack) {
-              _log.warning('Location search failed', error, stack);
-              if (!cancelled) results.value = AsyncError(error, stack);
-            },
-          );
+      final search = ref.read(savedLocationApiRepositoryProvider).search(debounced.value);
+      final rows = debounced.value.isEmpty
+          ? search.then((rows) async => orderBlankSearch(rows, await detectedPeople, _readRecentPersonPlaces()))
+          : search;
+      rows.then(
+        (rows) {
+          if (!cancelled) results.value = AsyncData(rows);
+        },
+        onError: (Object error, StackTrace stack) {
+          _log.warning('Location search failed', error, stack);
+          if (!cancelled) results.value = AsyncError(error, stack);
+        },
+      );
       return () => cancelled = true;
-    }, [debounced.value]);
+    }, [debounced.value, detectedPeople]);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -432,6 +453,73 @@ class _SearchResults extends HookConsumerWidget {
       ),
     );
   }
+}
+
+const _maxRecentPersonPlaces = 10;
+
+/// The people the server found in the asset, or none if there is no asset or the lookup fails.
+Future<Set<String>> _peopleInAsset(WidgetRef ref, String? assetId) async {
+  if (assetId == null) {
+    return const {};
+  }
+  try {
+    final asset = await ref.read(apiServiceProvider).assetsApi.getAssetInfo(assetId);
+    return {...?asset?.people.map((person) => person.id)};
+  } catch (error, stack) {
+    _log.warning('Failed to read the people in asset $assetId', error, stack);
+    return const {};
+  }
+}
+
+List<PersonPlace> _readRecentPersonPlaces() {
+  final raw = Store.tryGet(StoreKey.recentPersonPlaces);
+  if (raw == null) {
+    return const [];
+  }
+  try {
+    return (jsonDecode(raw) as List).cast<Map<String, dynamic>>().map(PersonPlace.fromJson).toList();
+  } catch (error, stack) {
+    _log.warning('Ignoring unreadable recent places', error, stack);
+    return const [];
+  }
+}
+
+/// Moves [place] to the front of the recent people's places, keeping the newest ten.
+Future<void> _rememberPersonPlace(PersonPlace place) async {
+  final recent = [
+    place,
+    ..._readRecentPersonPlaces().where((other) => other.detailId != place.detailId),
+  ].take(_maxRecentPersonPlaces);
+  await Store.put(StoreKey.recentPersonPlaces, jsonEncode(recent.map((p) => p.toJson()).toList()));
+}
+
+/// Orders the rows of a blank search: saved locations, then the places of the people in
+/// [detectedPeople], then the [recent] people's places not already listed. Other people's places are
+/// left out.
+///
+/// A recent place is shown as the server now has it. One the server no longer lists as current is
+/// dropped, since it was deleted or ended; a former place was never in the blank search, so its
+/// remembered copy is shown.
+@visibleForTesting
+List<LocationSearchResult> orderBlankSearch(
+  List<LocationSearchResult> rows,
+  Set<String> detectedPeople,
+  List<PersonPlace> recent,
+) {
+  final places = rows.whereType<PersonPlaceResult>().map((row) => row.place).toList();
+  final byDetail = {for (final place in places) place.detailId: place};
+  final detected = places.where((place) => detectedPeople.contains(place.personId)).toList();
+  final shown = {for (final place in detected) place.detailId};
+  final recentRows = recent
+      .where((place) => !shown.contains(place.detailId))
+      .map((place) => byDetail[place.detailId] ?? (place.isCurrent ? null : place))
+      .whereType<PersonPlace>()
+      .take(_maxRecentPersonPlaces);
+  return [
+    ...rows.whereType<SavedLocationResult>(),
+    ...detected.map(PersonPlaceResult.new),
+    ...recentRows.map(PersonPlaceResult.new),
+  ];
 }
 
 class _Message extends StatelessWidget {

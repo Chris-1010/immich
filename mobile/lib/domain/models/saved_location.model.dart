@@ -66,6 +66,20 @@ class PersonPlace {
     until: json['until'] as String?,
     isCurrent: (json['isCurrent'] as bool?) ?? true,
   );
+
+  Map<String, dynamic> toJson() => {
+    'detailId': detailId,
+    'personId': personId,
+    'personName': personName,
+    'kind': kind,
+    'key': key,
+    'value': value,
+    'latitude': latitude,
+    'longitude': longitude,
+    'since': since,
+    'until': until,
+    'isCurrent': isCurrent,
+  };
 }
 
 /// A map place from the server's place search (Google behind the proxy, GeoNames otherwise).
