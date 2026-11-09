@@ -14,23 +14,26 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 final _wholeWorld = LatLngBounds(southwest: const LatLng(-90, -180), northeast: const LatLng(90, 179.9999999));
 
 /// Shows the user's timeline, limited to photos that have a location, and returns the one tapped.
-Future<BaseAsset?> pickLocatedAsset(BuildContext context) => pickAsset(context, withLocation: true);
+Future<BaseAsset?> pickLocatedAsset(BuildContext context, {DateTime? initialDate}) =>
+    pickAsset(context, withLocation: true, initialDate: initialDate);
 
 /// Shows the user's timeline and returns the asset tapped. [withLocation] limits it to assets that
-/// have coordinates.
-Future<BaseAsset?> pickAsset(BuildContext context, {bool withLocation = false}) async {
+/// have coordinates; [initialDate] opens the timeline at that date rather than the newest assets.
+Future<BaseAsset?> pickAsset(BuildContext context, {bool withLocation = false, DateTime? initialDate}) async {
   // The selection app bar pops a Set when Done is pressed, so the route accepts any result.
-  final result = await Navigator.of(
-    context,
-    rootNavigator: true,
-  ).push<Object?>(MaterialPageRoute(builder: (_) => _AssetPickerPage(withLocation: withLocation)));
+  final result = await Navigator.of(context, rootNavigator: true).push<Object?>(
+    MaterialPageRoute(
+      builder: (_) => _AssetPickerPage(withLocation: withLocation, initialDate: initialDate),
+    ),
+  );
   return result is BaseAsset ? result : null;
 }
 
 class _AssetPickerPage extends ConsumerWidget {
   final bool withLocation;
+  final DateTime? initialDate;
 
-  const _AssetPickerPage({required this.withLocation});
+  const _AssetPickerPage({required this.withLocation, this.initialDate});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,7 +57,7 @@ class _AssetPickerPage extends ConsumerWidget {
           return timelineService;
         }),
       ],
-      child: const _SingleSelection(child: Timeline()),
+      child: _SingleSelection(child: Timeline(initialDate: initialDate)),
     );
   }
 }

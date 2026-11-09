@@ -137,8 +137,10 @@ class ActionService {
 
   Future<bool> editLocation(List<String> remoteIds, BuildContext context) async {
     maplibre.LatLng? initialLatLng;
+    DateTime? assetDate;
     var noLocationMode = NoLocationMode.mark;
     if (remoteIds.length == 1) {
+      assetDate = (await _remoteAssetRepository.get(remoteIds[0]))?.createdAt.toLocal();
       final exif = await _remoteAssetRepository.getExif(remoteIds[0]);
 
       if (exif?.latitude != null && exif?.longitude != null) {
@@ -160,7 +162,12 @@ class ActionService {
       return false;
     }
 
-    final result = await pickLocation(context: context, initialLatLng: initialLatLng, noLocationMode: noLocationMode);
+    final result = await pickLocation(
+      context: context,
+      initialLatLng: initialLatLng,
+      noLocationMode: noLocationMode,
+      assetDate: assetDate,
+    );
 
     if (result == null) {
       return false;

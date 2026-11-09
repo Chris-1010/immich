@@ -353,6 +353,7 @@ class _AssetDetailsBar extends ConsumerWidget {
       context: context,
       initialLatLng: details.hasLocation ? LatLng(details.latitude!, details.longitude!) : null,
       noLocationMode: details.isNoLocation ? NoLocationMode.unassign : NoLocationMode.mark,
+      assetDate: details.dateTime,
     );
     if (result == null || !context.mounted) {
       return;

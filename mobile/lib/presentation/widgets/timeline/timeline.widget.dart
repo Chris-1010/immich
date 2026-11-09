@@ -47,6 +47,7 @@ class Timeline extends StatelessWidget {
     this.persistentBottomBar = false,
     this.loadingWidget,
     this.selectionActions = const [],
+    this.initialDate,
   });
 
   final Widget? topSliverWidget;
@@ -65,6 +66,9 @@ class Timeline extends StatelessWidget {
 
   /// Shown top right while assets are selected, when the app bar is hidden.
   final List<Widget> selectionActions;
+
+  /// Opens the timeline scrolled to the group holding this date instead of the newest assets.
+  final DateTime? initialDate;
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +102,7 @@ class Timeline extends StatelessWidget {
             maxWidth: constraints.maxWidth,
             loadingWidget: loadingWidget,
             selectionActions: selectionActions,
+            initialDate: initialDate,
           ),
         ),
       ),
@@ -129,6 +134,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
     this.maxWidth,
     this.loadingWidget,
     this.selectionActions = const [],
+    this.initialDate,
   });
 
   final Widget? topSliverWidget;
@@ -142,6 +148,7 @@ class _SliverTimeline extends ConsumerStatefulWidget {
   final double? maxWidth;
   final Widget? loadingWidget;
   final List<Widget> selectionActions;
+  final DateTime? initialDate;
 
   @override
   ConsumerState createState() => _SliverTimelineState();
@@ -162,10 +169,12 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
   double _baseScaleFactor = 3.0;
   int? _restoreAssetIndex;
   ScrollToAssetEvent? _pendingAssetScroll;
+  DateTime? _pendingDateJump;
 
   @override
   void initState() {
     super.initState();
+    _pendingDateJump = widget.initialDate;
     _scrollController = ScrollController(onAttach: _restoreAssetPosition);
     _eventSubscription = EventStream.shared.listen(_onEvent);
 
@@ -175,9 +184,13 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
     _baseScaleFactor = _scaleFactor;
 
     ref.listenManual(multiSelectProvider.select((s) => s.isEnabled), _onMultiSelectionToggled);
-    ref.listenManual(timelineSegmentProvider, (_, segments) {
-      if (_pendingAssetScroll != null && !segments.isLoading && segments.hasValue) {
+    ref.listenManual(timelineSegmentProvider, fireImmediately: true, (_, segments) {
+      if (segments.isLoading || !segments.hasValue) return;
+      if (_pendingAssetScroll != null) {
         _scrollToPendingAsset(segments.requireValue);
+      }
+      if (_pendingDateJump != null) {
+        _jumpToPendingDate(segments.requireValue);
       }
     });
   }
@@ -310,6 +323,33 @@ class _SliverTimelineState extends ConsumerState<_SliverTimeline> {
         ref.read(timelineStateProvider.notifier).setScrubbing(false);
       }
     });
+  }
+
+  /// Jumps to the group that holds [_pendingDateJump]: the latest group not after it, or the oldest
+  /// group when the date comes before every asset.
+  void _jumpToPendingDate(List<Segment> segments) {
+    final date = _pendingDateJump;
+    final buckets = segments.where((segment) => segment.bucket is TimeBucket).toList();
+    // The first emission can be empty while buckets are still being counted
+    if (date == null || buckets.isEmpty) return;
+    _pendingDateJump = null;
+
+    DateTime bucketDate(Segment segment) => (segment.bucket as TimeBucket).date;
+    final notAfter = buckets.where((segment) => !bucketDate(segment).isAfter(date));
+    final target = notAfter.isNotEmpty
+        ? notAfter.reduce((a, b) => bucketDate(a).isAfter(bucketDate(b)) ? a : b)
+        : buckets.reduce((a, b) => bucketDate(a).isBefore(bucketDate(b)) ? a : b);
+
+    void jump() {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      // Segment offsets start below the app bar, so this leaves the group header just under it
+      final offset = target.startOffset + (widget.topSliverWidgetHeight ?? 0);
+      _scrollController.jumpTo(offset.clamp(0.0, position.maxScrollExtent));
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   Future<void> _scrollToPendingAsset(List<Segment> segments) async {

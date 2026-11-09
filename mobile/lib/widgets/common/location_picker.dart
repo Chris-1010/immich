@@ -57,16 +57,19 @@ class PickedNoLocation extends LocationPickerResult {
 }
 
 /// Opens the full-screen picker: a map to drop a pin on, one search over saved locations, people's
-/// places and map places, and the user's saved locations.
+/// places and map places, and the user's saved locations. [assetDate] is the date of the asset being
+/// located, where there is one, so From image opens the timeline at photos taken around then.
 Future<LocationPickerResult?> pickLocation({
   required BuildContext context,
   LatLng? initialLatLng,
   NoLocationMode noLocationMode = NoLocationMode.none,
+  DateTime? assetDate,
 }) {
   return Navigator.of(context, rootNavigator: true).push<LocationPickerResult>(
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => _LocationPickerPage(initialLatLng: initialLatLng, noLocationMode: noLocationMode),
+      builder: (_) =>
+          _LocationPickerPage(initialLatLng: initialLatLng, noLocationMode: noLocationMode, assetDate: assetDate),
     ),
   );
 }
@@ -80,8 +83,9 @@ Future<LatLng?> showLocationPicker({required BuildContext context, LatLng? initi
 class _LocationPickerPage extends HookConsumerWidget {
   final LatLng? initialLatLng;
   final NoLocationMode noLocationMode;
+  final DateTime? assetDate;
 
-  const _LocationPickerPage({required this.initialLatLng, required this.noLocationMode});
+  const _LocationPickerPage({required this.initialLatLng, required this.noLocationMode, this.assetDate});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -184,7 +188,7 @@ class _LocationPickerPage extends HookConsumerWidget {
 
     Future<void> pickFromImage() async {
       searchFocus.unfocus();
-      final asset = await pickLocatedAsset(context);
+      final asset = await pickLocatedAsset(context, initialDate: assetDate);
       if (asset == null) {
         return;
       }

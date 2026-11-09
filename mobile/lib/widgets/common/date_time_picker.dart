@@ -92,8 +92,12 @@ class _DateTimePicker extends HookConsumerWidget {
       final now = DateTime.now();
       // Handles cases where the date from the asset is far off in the future
       final initialDate = date.value.isAfter(now) ? now : date.value;
+      final locale = Localizations.localeOf(context);
       final newDate = await showDatePicker(
         context: context,
+        // Irish English types and shows dates day first (dd/mm/yyyy) instead of the US month first.
+        // Other languages keep their own order.
+        locale: locale.languageCode == 'en' ? const Locale('en', 'IE') : null,
         initialDate: initialDate,
         firstDate: DateTime(1800),
         lastDate: now,
@@ -114,7 +118,7 @@ class _DateTimePicker extends HookConsumerWidget {
     /// Copies the date, time and zone of a photo the user picks, read the same way as the asset
     /// viewer shows them.
     Future<void> copyFromImage() async {
-      final asset = await pickAsset(context);
+      final asset = await pickAsset(context, initialDate: date.value);
       if (asset == null) {
         return;
       }
