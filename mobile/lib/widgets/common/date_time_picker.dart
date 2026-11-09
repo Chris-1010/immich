@@ -92,12 +92,13 @@ class _DateTimePicker extends HookConsumerWidget {
       final now = DateTime.now();
       // Handles cases where the date from the asset is far off in the future
       final initialDate = date.value.isAfter(now) ? now : date.value;
-      final locale = Localizations.localeOf(context);
+      final dayFirst = Localizations.localeOf(context).languageCode == 'en';
       final newDate = await showDatePicker(
         context: context,
         // Irish English types and shows dates day first (dd/mm/yyyy) instead of the US month first.
         // Other languages keep their own order.
-        locale: locale.languageCode == 'en' ? const Locale('en', 'IE') : null,
+        locale: dayFirst ? const Locale('en', 'IE') : null,
+        builder: dayFirst ? (_, child) => _DayFirstSlashes(child: child!) : null,
         initialDate: initialDate,
         firstDate: DateTime(1800),
         lastDate: now,
@@ -204,6 +205,90 @@ class _DateTimePicker extends HookConsumerWidget {
       ),
     );
   }
+}
+
+/// Fills in the slashes of a dd/mm/yyyy date as it is typed into the date picker's text entry.
+///
+/// The picker takes no input formatters, so this watches for its field gaining focus and reformats
+/// the field's controller instead.
+class _DayFirstSlashes extends StatefulWidget {
+  final Widget child;
+
+  const _DayFirstSlashes({required this.child});
+
+  @override
+  State<_DayFirstSlashes> createState() => _DayFirstSlashesState();
+}
+
+class _DayFirstSlashesState extends State<_DayFirstSlashes> {
+  final _watched = Expando<bool>();
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeListener(_onFocusChanged);
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext == null || !focusContext.mounted) return;
+    // Only the picker's own field, not one elsewhere in the app
+    if (focusContext.findAncestorWidgetOfExactType<_DayFirstSlashes>() != widget) return;
+    final controller = focusContext.findAncestorStateOfType<EditableTextState>()?.widget.controller;
+    if (controller == null || _watched[controller] == true) return;
+    _watched[controller] = true;
+
+    var previous = controller.text;
+    controller.addListener(() {
+      final value = controller.value;
+      final typedAtEnd = value.text.length > previous.length && value.selection.baseOffset == value.text.length;
+      previous = value.text;
+      if (!typedAtEnd) return;
+      final formatted = formatDayFirstDate(value.text);
+      if (formatted == value.text) return;
+      previous = formatted;
+      controller.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// Lays typed text out as dd/mm/yyyy: a slash follows the day and month once each has two digits,
+/// a single digit followed by a slash is padded ("1/" becomes "01/"), and the year stops at four
+/// digits.
+@visibleForTesting
+String formatDayFirstDate(String input) {
+  final out = StringBuffer();
+  var part = '';
+  var partIndex = 0;
+  for (final char in input.split('')) {
+    if ('0123456789'.contains(char)) {
+      if (partIndex == 2 && part.length == 4) break;
+      part += char;
+      if (partIndex < 2 && part.length == 2) {
+        out.write('$part/');
+        part = '';
+        partIndex++;
+      }
+    } else if (char == '/' && partIndex < 2 && part.isNotEmpty) {
+      out.write('${part.padLeft(2, '0')}/');
+      part = '';
+      partIndex++;
+    }
+  }
+  out.write(part);
+  return out.toString();
 }
 
 class _TimeZoneOffset implements Comparable<_TimeZoneOffset> {

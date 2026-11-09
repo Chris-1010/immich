@@ -262,6 +262,9 @@ class _LocationPickerPage extends HookConsumerWidget {
                 ),
               ),
             SafeArea(
+              // Focusing the search inserts the dimming layer above, which would otherwise rebuild
+              // the field and drop the keyboard the tap just raised.
+              key: const ValueKey('search'),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 child: Column(
