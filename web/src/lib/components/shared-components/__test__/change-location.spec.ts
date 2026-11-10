@@ -2,6 +2,7 @@ import ChangeLocation from '$lib/components/shared-components/change-location.sv
 import { lastChosenLocation } from '$lib/stores/asset-editor.store';
 import {
   deleteSavedLocation,
+  getAssetInfo,
   getPersonGenders,
   getSavedLocations,
   LocationSearchResultType,
@@ -20,6 +21,7 @@ import { get } from 'svelte/store';
 vi.mock('@immich/sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@immich/sdk')>()),
   deleteSavedLocation: vi.fn(),
+  getAssetInfo: vi.fn(),
   getPersonGenders: vi.fn(),
   getSavedLocations: vi.fn(),
   searchLocations: vi.fn(),
@@ -200,15 +202,37 @@ describe('ChangeLocation', () => {
     });
   });
 
-  it("offers saved locations and people's current places before anything is typed", async () => {
+  it('offers saved locations and the places of the people in the asset before anything is typed', async () => {
     vi.mocked(getSavedLocations).mockResolvedValue([searchResults[0].saved!]);
     vi.mocked(searchLocations).mockResolvedValue([searchResults[1]]);
-    render(ChangeLocation, { pointOnly: true, onClose: vi.fn() });
+    vi.mocked(getAssetInfo).mockResolvedValue({ people: [{ id: searchResults[1].person!.personId }] } as never);
+    render(ChangeLocation, { assetId: 'asset-1', onClose: vi.fn() });
 
     await userEvent.click(screen.getByPlaceholderText('search_places'));
 
     expect(await screen.findByText('person_place_home · Rathmines')).toBeInTheDocument();
     expect(searchLocations).toHaveBeenCalledWith({});
+    expect(getAssetInfo).toHaveBeenCalledWith({ id: 'asset-1' });
+  });
+
+  it('leaves out the places of people not in the asset and not picked recently', async () => {
+    vi.mocked(searchLocations).mockResolvedValue([searchResults[1]]);
+    render(ChangeLocation, { pointOnly: true, onClose: vi.fn() });
+
+    await userEvent.click(screen.getByPlaceholderText('search_places'));
+    await vi.waitFor(() => expect(searchLocations).toHaveBeenCalledWith({}));
+
+    expect(screen.queryByText('person_place_home · Rathmines')).not.toBeInTheDocument();
+  });
+
+  it("offers a person's place picked before", async () => {
+    vi.mocked(searchLocations).mockResolvedValue([searchResults[1]]);
+    localStorage.setItem('immich_recent_person_places', JSON.stringify([searchResults[1].person]));
+    render(ChangeLocation, { pointOnly: true, onClose: vi.fn() });
+
+    await userEvent.click(screen.getByPlaceholderText('search_places'));
+
+    expect(await screen.findByText('person_place_home · Rathmines')).toBeInTheDocument();
   });
 
   describe('saved-locations drawer', () => {

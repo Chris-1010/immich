@@ -127,7 +127,10 @@
   };
 
   const handlePickOnMap = async () => {
+    const selected = assetInteraction.selectedAssets;
     const result: ChangeLocationResult | undefined = await modalManager.show(ChangeLocation, {
+      assetId: selected.length === 1 ? selected[0].id : undefined,
+      assetDate: selected[0]?.localDateTime,
       point: {
         lat: location.latitude,
         lng: location.longitude,

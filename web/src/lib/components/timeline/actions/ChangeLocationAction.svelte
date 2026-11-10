@@ -17,6 +17,9 @@
   const { clearSelect, getOwnedAssets } = getAssetControlContext();
 
   let isShowChangeLocation = $state(false);
+  // Read when the picker opens: one photo puts its people's places first, and From image opens at
+  // the first photo's date.
+  let selected = $derived(isShowChangeLocation ? getOwnedAssets() : []);
 
   async function handleConfirm(result?: ChangeLocationResult) {
     isShowChangeLocation = false;
@@ -48,5 +51,9 @@
   />
 {/if}
 {#if isShowChangeLocation}
-  <ChangeLocation onClose={handleConfirm} />
+  <ChangeLocation
+    assetId={selected.length === 1 ? selected[0].id : undefined}
+    assetDate={selected[0]?.localDateTime}
+    onClose={handleConfirm}
+  />
 {/if}

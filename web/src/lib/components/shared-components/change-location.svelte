@@ -26,10 +26,14 @@
   import { locale } from '$lib/stores/preferences.store';
   import { getPeopleThumbnailUrl } from '$lib/utils';
   import { delay } from '$lib/utils/asset-utils';
+  import { pickAsset, toPickerDate } from '$lib/utils/asset-picker';
+  import { orderBlankPersonPlaces, readRecentPersonPlaces, rememberPersonPlace } from '$lib/utils/location-suggestions';
+  import type { TimelineDateTime } from '$lib/utils/timeline-util';
   import { handleError } from '$lib/utils/handle-error';
   import { formatDetailDate } from '$lib/utils/person-detail-dates';
   import { genderRingClass, loadPersonGenders } from '$lib/utils/person-gender';
   import {
+    getAssetInfo,
     LocationSearchResultType,
     PersonDetailKind,
     searchLocations,
@@ -39,13 +43,24 @@
     type PlacesResponseDto,
     type RelationshipGender,
   } from '@immich/sdk';
-  import { Button, HStack, Icon, IconButton, LoadingSpinner, Modal, ModalBody, ModalFooter } from '@immich/ui';
+  import {
+    Button,
+    HStack,
+    Icon,
+    IconButton,
+    LoadingSpinner,
+    Modal,
+    ModalBody,
+    ModalFooter,
+    toastManager,
+  } from '@immich/ui';
   import {
     mdiBookmarkOutline,
     mdiChevronLeft,
     mdiChevronRight,
     mdiCheck,
     mdiClose,
+    mdiImageSearchOutline,
     mdiMapMarkerMultipleOutline,
     mdiMapMarkerOffOutline,
     mdiPencilOutline,
@@ -65,18 +80,29 @@
      * not move where the next asset edit opens. Pass the existing pin as `point` to open on it.
      */
     pointOnly?: boolean;
+    /**
+     * The single asset being located when `asset` is not passed (a one-photo selection), so the
+     * places of the people in it are suggested first.
+     */
+    assetId?: string;
+    /** The local date of the asset(s) being located, so From image opens at photos taken around then. */
+    assetDate?: TimelineDateTime;
     onClose: (result?: ChangeLocationResult) => void;
   }
 
-  let { asset = undefined, point: initialPoint, pointOnly = false, onClose }: Props = $props();
+  let { asset = undefined, point: initialPoint, pointOnly = false, assetId, assetDate, onClose }: Props = $props();
 
   // One list for saved locations, people's places and GeoNames places, in the order the server ranks
-  // them. Before anything is typed it offers the saved locations and people's current places, so the
-  // list is worth opening on its own; the saved part comes from the store, which stays current when
-  // a location is saved or deleted here, and the people's places from the empty-query search.
+  // them. Before anything is typed it offers the saved locations, then the places of the people in
+  // the asset, then the people's places picked most recently, so the list is worth opening on its
+  // own. The saved part comes from the store, which stays current when a location is saved or deleted
+  // here, and the people's places from the empty-query search.
   let searchWord: string = $state('');
   let results: LocationSearchResultDto[] = $state([]);
-  let currentPeoplesPlaces: LocationSearchResultDto[] = $state([]);
+  let blankSearchRows: LocationSearchResultDto[] = $state([]);
+  let detectedPeople = $state(new Set<string>());
+  let recentPersonPlaces = $state(readRecentPersonPlaces());
+  let currentPeoplesPlaces = $derived(orderBlankPersonPlaces(blankSearchRows, detectedPeople, recentPersonPlaces));
   let suggestions: LocationSearchResultDto[] = $derived(
     searchWord === ''
       ? [...$savedLocations.map((saved) => ({ type: LocationSearchResultType.Saved, saved })), ...currentPeoplesPlaces]
@@ -211,6 +237,10 @@
    * place's "Name, Admin1, Admin2".
    */
   const handleUseSuggestion = (result: LocationSearchResultDto) => {
+    if (result.person) {
+      rememberPersonPlace(result.person);
+      recentPersonPlaces = readRecentPersonPlaces();
+    }
     if (result.saved) {
       handleUseSuggested(result.saved.latitude, result.saved.longitude, undefined, result.saved.name);
     } else if (result.person) {
@@ -356,6 +386,36 @@
     }
   };
 
+  // Drops the pin where a picked photo was taken, named after its city. The picker only lists photos
+  // with coordinates, so a photo without them is unexpected but still answered.
+  const handleFromImage = async () => {
+    hideSuggestion = true;
+    const picked = await pickAsset({
+      withLocation: true,
+      initialDate: assetDate ?? toPickerDate(asset?.localDateTime),
+    });
+    if (!picked) {
+      return;
+    }
+    const { latitude, longitude, city } = picked;
+    if (latitude == null || longitude == null) {
+      toastManager.warning($t('photo_has_no_location'));
+      return;
+    }
+    handleUseSuggested(latitude, longitude, undefined, city || undefined);
+  };
+
+  // The people the server found in the asset, so their places lead the before-typing list. A
+  // failed lookup only means no one is put first.
+  const loadDetectedPeople = async () => {
+    let people = asset?.people;
+    if (!people && assetId) {
+      const info = await getAssetInfo({ id: assetId });
+      people = info.people;
+    }
+    detectedPeople = new Set((people ?? []).map((person) => person.id));
+  };
+
   // Fill the saved list from the server (moving anything left in browser storage there first). The
   // picker opens without waiting: the list appears when the answer arrives.
   //
@@ -365,10 +425,9 @@
   onMount(() => {
     savedLocations.load().catch((error: unknown) => handleError(error, $t('errors.unable_to_load_saved_locations')));
     searchLocations({})
-      .then(
-        (defaults) => (currentPeoplesPlaces = defaults.filter(({ type }) => type === LocationSearchResultType.Person)),
-      )
+      .then((defaults) => (blankSearchRows = defaults))
       .catch(() => {});
+    loadDetectedPeople().catch(() => {});
     loadPersonGenders()
       .then((loaded) => (genders = loaded))
       .catch(() => {});
@@ -455,7 +514,12 @@
           </div>
         </div>
 
-        <span>{$t('pick_a_location')}</span>
+        <div class="flex items-center justify-between gap-2">
+          <span>{$t('pick_a_location')}</span>
+          <Button size="small" variant="ghost" leadingIcon={mdiImageSearchOutline} onclick={handleFromImage}>
+            {$t('from_image')}
+          </Button>
+        </div>
         <div class="h-64 min-h-64 w-full z-0 sm:h-125 sm:min-h-75">
           {#await import('$lib/components/shared-components/map/map.svelte')}
             {#await delay(timeToLoadTheMap) then}

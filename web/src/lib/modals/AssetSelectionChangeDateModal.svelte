@@ -5,11 +5,12 @@
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { getPreferredTimeZone, getTimezones, toIsoDate, type ZoneOption } from '$lib/modals/timezone-utils';
   import { user } from '$lib/stores/user.store';
+  import { getAssetDateTime, pickAsset, toPickerDate } from '$lib/utils/asset-picker';
   import { getOwnedAssetsWithWarning } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
   import { updateAssets } from '@immich/sdk';
   import { Button, Field, HStack, Label, Modal, ModalBody, ModalFooter, Switch } from '@immich/ui';
-  import { mdiCalendarEdit } from '@mdi/js';
+  import { mdiCalendarEdit, mdiImageSearchOutline } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { t } from 'svelte-i18n';
 
@@ -53,6 +54,25 @@
     }
   };
 
+  // Copies the date, time and time zone of a photo the user picks, read the same way the details
+  // panel shows them, and switches back to an absolute date. The picker opens at the date entered,
+  // or at the first selected asset's date when shifting by an offset.
+  const handleFromImage = async () => {
+    const initialDate = showRelative ? assets[0]?.localDateTime : toPickerDate(selectedDate);
+    const picked = await pickAsset({ initialDate });
+    if (!picked) {
+      return;
+    }
+    try {
+      const { date: pickedDate, timeZone } = await getAssetDateTime(picked.id);
+      showRelative = false;
+      selectedDate = pickedDate.toFormat("yyyy-MM-dd'T'HH:mm:ss.SSS");
+      lastSelectedTimezone = getPreferredTimeZone(pickedDate, timeZone, getTimezones(selectedDate));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_read_photo'));
+    }
+  };
+
   // let before = $derived(DateTime.fromObject(assets[0].localDateTime).toFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"));
 
   // let after = $derived(
@@ -79,6 +99,11 @@
       <Label for="datetime" class="block mb-1">{$t('date_and_time')}</Label>
       <DateInput class="immich-form-input w-full mb-2" id="datetime" type="datetime-local" bind:value={selectedDate} />
     {/if}
+    <div class="mb-2 flex justify-end">
+      <Button size="small" variant="ghost" leadingIcon={mdiImageSearchOutline} onclick={handleFromImage}>
+        {$t('from_image')}
+      </Button>
+    </div>
     <div class="w-full">
       <Combobox
         bind:selectedOption

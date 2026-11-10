@@ -2,11 +2,12 @@
   import Combobox from '$lib/components/shared-components/combobox.svelte';
   import DateInput from '$lib/elements/DateInput.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
-  import { getPreferredTimeZone, getTimezones, toIsoDate } from '$lib/modals/timezone-utils';
+  import { getPreferredTimeZone, getTimezones, toIsoDate, type ZoneOption } from '$lib/modals/timezone-utils';
+  import { getAssetDateTime, pickAsset, toPickerDate } from '$lib/utils/asset-picker';
   import { handleError } from '$lib/utils/handle-error';
   import { updateAsset } from '@immich/sdk';
   import { Button, HStack, Label, Modal, ModalBody, ModalFooter } from '@immich/ui';
-  import { mdiCalendarEdit } from '@mdi/js';
+  import { mdiCalendarEdit, mdiImageSearchOutline } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { t } from 'svelte-i18n';
 
@@ -45,6 +46,22 @@
     }
   };
 
+  // Copies the date, time and time zone of a photo the user picks, read the same way the details
+  // panel shows them. The picker opens at the date currently entered.
+  const handleFromImage = async () => {
+    const picked = await pickAsset({ initialDate: toPickerDate(selectedDate) });
+    if (!picked) {
+      return;
+    }
+    try {
+      const { date: pickedDate, timeZone } = await getAssetDateTime(picked.id);
+      selectedDate = pickedDate.toFormat("yyyy-MM-dd'T'HH:mm:ss.SSS");
+      lastSelectedTimezone = getPreferredTimeZone(pickedDate, timeZone, getTimezones(selectedDate));
+    } catch (error) {
+      handleError(error, $t('errors.unable_to_read_photo'));
+    }
+  };
+
   // when changing the time zone, assume the configured date/time is meant for that time zone (instead of updating it)
   const date = $derived(DateTime.fromISO(selectedDate, { zone: selectedOption?.value, setZone: true }));
 </script>
@@ -58,9 +75,20 @@
       type="datetime-local"
       bind:value={selectedDate}
     />
+    <div class="mb-2 flex justify-end">
+      <Button size="small" variant="ghost" leadingIcon={mdiImageSearchOutline} onclick={handleFromImage}>
+        {$t('from_image')}
+      </Button>
+    </div>
     {#if timezoneInput}
       <div class="w-full">
-        <Combobox bind:selectedOption label={$t('timezone')} options={timezones} placeholder={$t('search_timezone')} />
+        <Combobox
+          bind:selectedOption
+          label={$t('timezone')}
+          options={timezones}
+          placeholder={$t('search_timezone')}
+          onSelect={(option) => (lastSelectedTimezone = option as ZoneOption)}
+        />
       </div>
     {/if}
   </ModalBody>
