@@ -73,6 +73,12 @@ export class TimeBucketDto {
     description: 'Filter to only assets without GPS coordinates',
   })
   withoutCoordinates?: boolean;
+
+  @ValidateBoolean({
+    optional: true,
+    description: 'Filter to only assets with GPS coordinates',
+  })
+  hasCoordinates?: boolean;
 }
 
 export class TimeBucketAssetDto extends TimeBucketDto {

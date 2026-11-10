@@ -72,6 +72,7 @@ interface AssetBuilderOptions {
   visibility?: AssetVisibility;
   withCoordinates?: boolean;
   withoutCoordinates?: boolean;
+  hasCoordinates?: boolean;
 }
 
 export interface TimeBucketOptions extends AssetBuilderOptions {
@@ -721,6 +722,12 @@ export class AssetRepository {
               .leftJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
               .where('asset_exif.latitude', 'is', null)
               .where('asset_exif.noLocation', '=', false),
+          )
+          .$if(!!options.hasCoordinates, (qb) =>
+            qb
+              .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
+              .where('asset_exif.latitude', 'is not', null)
+              .where('asset_exif.longitude', 'is not', null),
           ),
       )
       .selectFrom('asset')
@@ -835,6 +842,9 @@ export class AssetRepository {
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
           .$if(!!options.withoutCoordinates, (qb) =>
             qb.where('asset_exif.latitude', 'is', null).where('asset_exif.noLocation', '=', false),
+          )
+          .$if(!!options.hasCoordinates, (qb) =>
+            qb.where('asset_exif.latitude', 'is not', null).where('asset_exif.longitude', 'is not', null),
           )
           .orderBy(timeBucketColumn(options.timeBucketField), options.order ?? 'desc'),
       )

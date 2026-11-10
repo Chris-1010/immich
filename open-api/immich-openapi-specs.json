@@ -14173,6 +14173,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "hasCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets with GPS coordinates",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -14354,6 +14363,15 @@
             "required": false,
             "in": "query",
             "description": "Filter to only assets without GPS coordinates",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "hasCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets with GPS coordinates",
             "schema": {
               "type": "boolean"
             }

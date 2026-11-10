@@ -5369,7 +5369,7 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
+export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates, hasCoordinates }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -5386,6 +5386,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
     withPartners?: boolean;
     withStacked?: boolean;
     withoutCoordinates?: boolean;
+    hasCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
@@ -5406,7 +5407,8 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
         withCoordinates,
         withPartners,
         withStacked,
-        withoutCoordinates
+        withoutCoordinates,
+        hasCoordinates
     }))}`, {
         ...opts
     }));
@@ -5414,7 +5416,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
+export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates, hasCoordinates }: {
     albumId?: string;
     isFavorite?: boolean;
     isTrashed?: boolean;
@@ -5430,6 +5432,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
     withPartners?: boolean;
     withStacked?: boolean;
     withoutCoordinates?: boolean;
+    hasCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
@@ -5449,7 +5452,8 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
         withCoordinates,
         withPartners,
         withStacked,
-        withoutCoordinates
+        withoutCoordinates,
+        hasCoordinates
     }))}`, {
         ...opts
     }));
