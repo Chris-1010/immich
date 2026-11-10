@@ -138,11 +138,13 @@ export class MediaRepository {
     }
   }
 
-  decodeImage(input: string | Buffer, options: DecodeToBufferOptions) {
+  async decodeImage(input: string | Buffer, options: DecodeToBufferOptions) {
+    ({ input, options } = await this.stripUnusedBmpAlpha(input, options));
     return this.getImageDecodingPipeline(input, options).raw().toBuffer({ resolveWithObject: true });
   }
 
   async generateThumbnail(input: string | Buffer, options: GenerateThumbnailOptions, output: string): Promise<void> {
+    ({ input, options } = await this.stripUnusedBmpAlpha(input, options));
     await this.getImageDecodingPipeline(input, options)
       .toFormat(options.format, {
         quality: options.quality,
@@ -150,6 +152,53 @@ export class MediaRepository {
         chromaSubsampling: options.quality >= 80 ? '4:4:4' : '4:2:0',
       })
       .toFile(output);
+  }
+
+  /**
+   * In an uncompressed 32-bit BMP the fourth byte of each pixel is reserved, not alpha, and many
+   * applications (notably game screenshot tools) leave junk in it. libvips reads it as alpha, which
+   * darkens or blanks the image once it is premultiplied for resizing or flattened for JPEG. Decode
+   * such files to plain RGB up front so the alpha never enters the pipeline.
+   */
+  private async stripUnusedBmpAlpha<T extends DecodeToBufferOptions>(
+    input: string | Buffer,
+    options: T,
+  ): Promise<{ input: string | Buffer; options: T }> {
+    if (options.raw || typeof input !== 'string' || !input.toLowerCase().endsWith('.bmp')) {
+      return { input, options };
+    }
+
+    const header = Buffer.alloc(34);
+    const file = await fs.open(input, 'r');
+    try {
+      await file.read(header, 0, header.length, 0);
+    } finally {
+      await file.close();
+    }
+
+    const headerSize = header.readUInt32LE(14);
+    const bitsPerPixel = header.readUInt16LE(28);
+    const compression = header.readUInt32LE(30);
+    const BI_RGB = 0;
+    const BI_BITFIELDS = 3;
+    // BITMAPV4/V5 headers with BI_BITFIELDS carry an explicit alpha mask, so keep those intact
+    const hasUnusedAlpha =
+      header.toString('ascii', 0, 2) === 'BM' &&
+      bitsPerPixel === 32 &&
+      (compression === BI_RGB || (compression === BI_BITFIELDS && headerSize <= 40));
+    if (!hasUnusedAlpha) {
+      return { input, options };
+    }
+
+    const { data, info } = await sharp(input, {
+      failOn: options.processInvalidImages ? 'none' : 'error',
+      limitInputPixels: false,
+      unlimited: true,
+    })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return { input: data, options: { ...options, raw: info } };
   }
 
   private getImageDecodingPipeline(input: string | Buffer, options: DecodeToBufferOptions) {
