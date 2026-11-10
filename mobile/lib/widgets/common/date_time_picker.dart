@@ -7,6 +7,7 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/duration_extensions.dart';
 import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
 import 'package:immich_mobile/utils/timezone.dart';
+import 'package:immich_mobile/widgets/common/calendar_wheel_date_picker.dart';
 import 'package:immich_mobile/widgets/common/dropdown_search_menu.dart';
 import 'package:immich_mobile/widgets/common/located_asset_picker.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -93,21 +94,23 @@ class _DateTimePicker extends HookConsumerWidget {
       // Handles cases where the date from the asset is far off in the future
       final initialDate = date.value.isAfter(now) ? now : date.value;
       final dayFirst = Localizations.localeOf(context).languageCode == 'en';
-      final newDate = await showDatePicker(
+      final newDate = await showCalendarWheelDatePicker(
         context: context,
         // Irish English types and shows dates day first (dd/mm/yyyy) instead of the US month first.
         // Other languages keep their own order.
         locale: dayFirst ? const Locale('en', 'IE') : null,
         builder: dayFirst ? (_, child) => _DayFirstSlashes(child: child!) : null,
         initialDate: initialDate,
+        initialTime: TimeOfDay.fromDateTime(date.value),
         firstDate: DateTime(1800),
         lastDate: now,
       );
-      if (newDate == null) {
+      if (newDate == null || !context.mounted) {
         return;
       }
 
-      final newTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(date.value));
+      // Opens on the time set on the picker's wheels.
+      final newTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(newDate));
 
       if (newTime == null) {
         return;
