@@ -1,6 +1,10 @@
 <script lang="ts">
   import Timeline from '$lib/components/timeline/Timeline.svelte';
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
+  import {
+    findClosestGroupForDate,
+    getMonthGroupByDate,
+  } from '$lib/managers/timeline-manager/internal/search-support.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { AssetInteraction } from '$lib/stores/asset-interaction.svelte';
   import type { TimelineDateTime } from '$lib/utils/timeline-util';
@@ -23,10 +27,11 @@
   const assetInteraction = new AssetInteraction();
 
   // Bucketed by date taken whatever the main timeline is sorted by, so the initial date lands on
-  // photos taken around then.
+  // photos taken around then. The located list leaves visibility open so archived photos count, and
+  // the server refuses partners' photos alongside archived ones, so it is the user's own only.
   const options = $derived(
     withLocation
-      ? { withPartners: true, withCoordinates: true, hasCoordinates: true, timeBucketField: TimeBucketField.DateTaken }
+      ? { withCoordinates: true, hasCoordinates: true, timeBucketField: TimeBucketField.DateTaken }
       : {
           visibility: AssetVisibility.Timeline,
           withStacked: true,
@@ -52,15 +57,25 @@
     void scrollToDate(initialDate);
   });
 
+  // Mirrors the timeline's own scroll-after-filter: layout deferral is switched off while the target
+  // month loads, or its positions are stale and the scroll lands on a blank gap; the sliding window is
+  // then re-synced so the months now in view load and render. The closest month that exists is used
+  // when the date has none (common when only located photos are listed).
   const scrollToDate = async (date: TimelineDateTime) => {
-    const asset = await timelineManager.getClosestAssetToDate(date);
-    if (!asset) {
-      return;
-    }
-    const monthGroup = await timelineManager.findMonthGroupForAsset({ id: asset.id });
-    const position = monthGroup?.findAssetAbsolutePosition(asset.id);
-    if (position) {
-      timelineManager.scrollTo(Math.max(0, position.top - timelineManager.headerHeight));
+    timelineManager.isScrollingOnLoad = true;
+    try {
+      const monthGroup =
+        getMonthGroupByDate(timelineManager, date) ?? findClosestGroupForDate(timelineManager.months, date);
+      if (!monthGroup) {
+        return;
+      }
+      await timelineManager.loadMonthGroup(monthGroup.yearMonth, { cancelable: false });
+      const asset = monthGroup.findClosest(date);
+      const position = asset && monthGroup.findAssetAbsolutePosition(asset.id);
+      timelineManager.scrollTo(position ? Math.max(0, position.top - timelineManager.headerHeight) : monthGroup.top);
+      timelineManager.updateSlidingWindow();
+    } finally {
+      timelineManager.isScrollingOnLoad = false;
     }
   };
 </script>
