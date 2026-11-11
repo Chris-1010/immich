@@ -1,4 +1,4 @@
-import { UpdatedAtTrigger } from 'src/decorators';
+import { UpdatedAtTrigger, UpdateIdColumn } from 'src/decorators';
 import { ReviewDecision } from 'src/enum';
 import { AssetTable } from 'src/schema/tables/asset.table';
 import {
@@ -33,4 +33,7 @@ export class AssetReviewTable {
 
   @UpdateDateColumn()
   updatedAt!: Generated<Timestamp>;
+
+  @UpdateIdColumn()
+  updateId!: Generated<string>;
 }
