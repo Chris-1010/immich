@@ -945,7 +945,7 @@ export class AssetRepository {
       )
       .select((eb) => eb.fn.toJson(eb.table('stacked_assets')).$castTo<Stack | null>().as('stack'))
       .where('asset.ownerId', '=', asUuid(ownerId))
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where('asset.visibility', 'not in', [AssetVisibility.Hidden, AssetVisibility.Review])
       .where('asset.updatedAt', '<=', updatedUntil)
       .$if(!!lastId, (qb) => qb.where('asset.id', '>', lastId!))
       .orderBy('asset.id')
@@ -973,7 +973,7 @@ export class AssetRepository {
       )
       .select((eb) => eb.fn.toJson(eb.table('stacked_assets').$castTo<Stack | null>()).as('stack'))
       .where('asset.ownerId', '=', anyUuid(options.userIds))
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where('asset.visibility', 'not in', [AssetVisibility.Hidden, AssetVisibility.Review])
       .where('asset.updatedAt', '>', options.updatedAfter)
       .limit(options.limit)
       .execute();

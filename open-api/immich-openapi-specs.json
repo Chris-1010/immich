@@ -9474,6 +9474,226 @@
         "x-immich-state": "Alpha"
       }
     },
+    "/review": {
+      "get": {
+        "description": "Retrieve every asset pending review for the authenticated user, in the order they were added, with each decision and its staged edits. Pending assets are added by uploading with `visibility` set to `review`.",
+        "operationId": "getReviewItems",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewItemResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List pending assets",
+        "tags": [
+          "Review"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.read",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/review/finish": {
+      "post": {
+        "description": "Commit every decision in one step. Kept assets have their staged edits applied and join the library; assets decided Delete are permanently deleted. Refused while any pending asset is undecided.",
+        "operationId": "finishReview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFinishResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Finish the review",
+        "tags": [
+          "Review"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.delete",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/review/{id}": {
+      "put": {
+        "description": "Set the decision (undecided, keep or delete) and/or replace the staged edits of a pending asset. Nothing is applied to the asset until the review is finished.",
+        "operationId": "updateReviewItem",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewUpdateDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewItemResponseDto"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a pending asset",
+        "tags": [
+          "Review"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.update",
+        "x-immich-state": "Alpha"
+      }
+    },
+    "/review/{id}/similar": {
+      "get": {
+        "description": "Library assets that look like the pending asset, closest first, using the duplicate-detection embedding. Empty until smart search has processed the asset, or when duplicate detection is disabled.",
+        "operationId": "getReviewSimilar",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewSimilarAssetResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Find look-alikes in the library",
+        "tags": [
+          "Review"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v2.4.1",
+            "state": "Added"
+          },
+          {
+            "version": "v2.4.1",
+            "state": "Alpha"
+          }
+        ],
+        "x-immich-permission": "asset.read",
+        "x-immich-state": "Alpha"
+      }
+    },
     "/saved-locations": {
       "get": {
         "description": "Retrieve every saved location belonging to the authenticated user, in name order.",
@@ -14038,6 +14258,15 @@
             }
           },
           {
+            "name": "hasCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets with GPS coordinates",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "isFavorite",
             "required": false,
             "in": "query",
@@ -14173,15 +14402,6 @@
             "schema": {
               "type": "boolean"
             }
-          },
-          {
-            "name": "hasCoordinates",
-            "required": false,
-            "in": "query",
-            "description": "Filter to only assets with GPS coordinates",
-            "schema": {
-              "type": "boolean"
-            }
           }
         ],
         "responses": {
@@ -14238,6 +14458,15 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "name": "hasCoordinates",
+            "required": false,
+            "in": "query",
+            "description": "Filter to only assets with GPS coordinates",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -14363,15 +14592,6 @@
             "required": false,
             "in": "query",
             "description": "Filter to only assets without GPS coordinates",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "hasCoordinates",
-            "required": false,
-            "in": "query",
-            "description": "Filter to only assets with GPS coordinates",
             "schema": {
               "type": "boolean"
             }
@@ -15853,6 +16073,10 @@
     {
       "name": "Relationships",
       "description": "A relationship is a directed link between two people, carrying exactly one relationship type. It is stored once and read from both ends: the subject sees the counterpart labelled with the type, and the counterpart sees the subject labelled with that type's inverse. Every type has an inverse, and a type whose inverse is itself is symmetric."
+    },
+    {
+      "name": "Review",
+      "description": "Images pending review are uploaded but not yet part of the library. Each carries a decision (undecided, keep or delete) and staged edits; finishing the review keeps or permanently deletes them all in one step."
     },
     {
       "name": "SavedLocations",
@@ -17483,7 +17707,8 @@
           "archive",
           "timeline",
           "hidden",
-          "locked"
+          "locked",
+          "review"
         ],
         "type": "string"
       },
@@ -21380,6 +21605,165 @@
           "lastImportFileName",
           "lastUpdate"
         ],
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "enum": [
+          "undecided",
+          "keep",
+          "delete"
+        ],
+        "type": "string"
+      },
+      "ReviewEditsDto": {
+        "properties": {
+          "albumIds": {
+            "description": "Albums the asset is to be added to.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "dateTimeOriginal": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "faces": {
+            "description": "Face-to-person assignments to make.",
+            "items": {
+              "$ref": "#/components/schemas/ReviewFaceEditDto"
+            },
+            "type": "array"
+          },
+          "isFavorite": {
+            "type": "boolean"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "noLocation": {
+            "description": "Mark the asset as deliberately having no location.",
+            "type": "boolean"
+          },
+          "rating": {
+            "maximum": 5,
+            "minimum": -1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "ReviewFaceEditDto": {
+        "properties": {
+          "faceId": {
+            "description": "A face detected on the pending asset.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "personId": {
+            "description": "The person the face is to be assigned to when the asset is kept.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "faceId",
+          "personId"
+        ],
+        "type": "object"
+      },
+      "ReviewFinishResponseDto": {
+        "properties": {
+          "deleted": {
+            "type": "integer"
+          },
+          "kept": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted",
+          "kept"
+        ],
+        "type": "object"
+      },
+      "ReviewItemResponseDto": {
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecision"
+              }
+            ]
+          },
+          "edits": {
+            "$ref": "#/components/schemas/ReviewEditsDto"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "createdAt",
+          "decision",
+          "edits",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ReviewSimilarAssetResponseDto": {
+        "properties": {
+          "assetId": {
+            "description": "A library asset that looks like the pending asset.",
+            "type": "string"
+          },
+          "distance": {
+            "description": "Visual distance between the two; smaller is more alike.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "assetId",
+          "distance"
+        ],
+        "type": "object"
+      },
+      "ReviewUpdateDto": {
+        "properties": {
+          "decision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecision"
+              }
+            ]
+          },
+          "edits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReviewEditsDto"
+              }
+            ],
+            "description": "Replaces every staged edit on the asset."
+          }
+        },
         "type": "object"
       },
       "SavedLocationCreateDto": {

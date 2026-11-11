@@ -322,6 +322,7 @@ export class AssetJobRepository {
         'asset.originalFileName',
         'asset.livePhotoVideoId',
         'asset.fileCreatedAt',
+        'asset.visibility',
         'asset_exif.timeZone',
         'asset_exif.fileSizeInByte',
       ])
@@ -336,7 +337,7 @@ export class AssetJobRepository {
 
   @GenerateSql({ params: [], stream: true })
   streamForStorageTemplateJob() {
-    return this.storageTemplateAssetQuery().stream();
+    return this.storageTemplateAssetQuery().where('asset.visibility', '!=', AssetVisibility.Review).stream();
   }
 
   @GenerateSql({ params: [DummyValue.DATE], stream: true })

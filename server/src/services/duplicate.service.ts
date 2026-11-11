@@ -83,6 +83,12 @@ export class DuplicateService extends BaseService {
       return JobStatus.Skipped;
     }
 
+    if (asset.visibility === AssetVisibility.Review) {
+      // Pending assets are compared against the library on demand by the review page instead.
+      this.logger.debug(`Asset ${id} is pending review, skipping`);
+      return JobStatus.Skipped;
+    }
+
     if (!asset.embedding) {
       this.logger.debug(`Asset ${id} is missing embedding`);
       return JobStatus.Failed;

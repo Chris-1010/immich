@@ -493,8 +493,10 @@ export class PersonRepository {
     return this.db
       .selectFrom('asset_face')
       .selectAll('asset_face')
+      .innerJoin('asset', 'asset.id', 'asset_face.assetId')
       .where('asset_face.personId', '=', personId)
       .where('asset_face.deletedAt', 'is', null)
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .executeTakeFirst();
   }
 

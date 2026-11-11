@@ -40,6 +40,7 @@ import { PersonRepository } from 'src/repositories/person.repository';
 import { PluginRepository } from 'src/repositories/plugin.repository';
 import { ProcessRepository } from 'src/repositories/process.repository';
 import { RelationshipRepository } from 'src/repositories/relationship.repository';
+import { ReviewRepository } from 'src/repositories/review.repository';
 import { SavedLocationRepository } from 'src/repositories/saved-location.repository';
 import { SearchRepository } from 'src/repositories/search.repository';
 import { ServerInfoRepository } from 'src/repositories/server-info.repository';
@@ -95,9 +96,12 @@ export const BASE_SERVICE_DEPENDENCIES = [
   OcrRepository,
   PartnerRepository,
   PersonRepository,
+  PersonDetailRepository,
   PluginRepository,
   ProcessRepository,
   RelationshipRepository,
+  ReviewRepository,
+  SavedLocationRepository,
   SearchRepository,
   ServerInfoRepository,
   SessionRepository,
@@ -158,6 +162,7 @@ export class BaseService {
     protected pluginRepository: PluginRepository,
     protected processRepository: ProcessRepository,
     protected relationshipRepository: RelationshipRepository,
+    protected reviewRepository: ReviewRepository,
     protected savedLocationRepository: SavedLocationRepository,
     protected searchRepository: SearchRepository,
     protected serverInfoRepository: ServerInfoRepository,

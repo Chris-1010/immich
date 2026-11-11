@@ -10,6 +10,7 @@ import {
   AssetFileType,
   AssetPathType,
   AssetType,
+  AssetVisibility,
   DatabaseLock,
   JobName,
   JobStatus,
@@ -142,6 +143,11 @@ export class StorageTemplateService extends BaseService {
     const asset = await this.assetJobRepository.getForStorageTemplateJob(id);
     if (!asset) {
       return JobStatus.Failed;
+    }
+
+    // Pending assets stay under review/ until the review is finished.
+    if (asset.visibility === AssetVisibility.Review) {
+      return JobStatus.Skipped;
     }
 
     const user = await this.userRepository.get(asset.ownerId, {});

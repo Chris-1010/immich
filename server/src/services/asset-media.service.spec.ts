@@ -373,6 +373,31 @@ describe(AssetMediaService.name, () => {
       );
     });
 
+    it('should move an asset uploaded for review into the review folder', async () => {
+      const file = {
+        uuid: 'random-uuid',
+        originalPath: '/data/upload/user-id/ra/nd/random-uuid.jpeg',
+        mimeType: 'image/jpeg',
+        checksum: Buffer.from('file hash', 'utf8'),
+        originalName: 'asset_1.jpeg',
+        size: 42,
+      };
+
+      mocks.asset.create.mockResolvedValue(assetEntity);
+      mocks.review.create.mockResolvedValue();
+
+      await expect(
+        sut.uploadAsset(authStub.user1, { ...createDto, visibility: AssetVisibility.Review }, file),
+      ).resolves.toEqual({ id: 'id_1', status: AssetMediaStatus.CREATED });
+
+      const reviewPath = expect.stringMatching(/\/data\/review\/user-id\/ra\/nd\/random-uuid\.jpeg$/);
+      expect(mocks.storage.rename).toHaveBeenCalledWith('/data/upload/user-id/ra/nd/random-uuid.jpeg', reviewPath);
+      expect(mocks.asset.create).toHaveBeenCalledWith(
+        expect.objectContaining({ originalPath: reviewPath, visibility: AssetVisibility.Review }),
+      );
+      expect(mocks.review.create).toHaveBeenCalledWith('id_1');
+    });
+
     it('should handle a duplicate', async () => {
       const file = {
         uuid: 'random-uuid',

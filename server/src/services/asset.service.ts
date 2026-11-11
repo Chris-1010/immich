@@ -32,8 +32,14 @@ import {
 import { BaseService } from 'src/services/base.service';
 import { JobItem, JobOf } from 'src/types';
 import { requireElevatedPermission } from 'src/utils/access';
-import { getAssetFiles, getMyPartnerIds, onAfterUnlink, onBeforeLink, onBeforeUnlink } from 'src/utils/asset.util';
-import { updateLockedColumns } from 'src/utils/database';
+import {
+  getAssetFiles,
+  getMyPartnerIds,
+  onAfterUnlink,
+  onBeforeLink,
+  onBeforeUnlink,
+  updateAssetExif,
+} from 'src/utils/asset.util';
 
 @Injectable()
 export class AssetService extends BaseService {
@@ -94,6 +100,7 @@ export class AssetService extends BaseService {
 
   async update(auth: AuthDto, id: string, dto: UpdateAssetDto): Promise<AssetResponseDto> {
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: [id] });
+    await this.requireNoReviewVisibilityChange([id], dto.visibility);
 
     const { description, dateTimeOriginal, latitude, longitude, rating, noLocation, ...rest } = dto;
     const repos = { asset: this.assetRepository, event: this.eventRepository };
@@ -108,7 +115,10 @@ export class AssetService extends BaseService {
       }
     }
 
-    await this.updateExif({ id, description, dateTimeOriginal, latitude, longitude, rating, noLocation });
+    await updateAssetExif(
+      { asset: this.assetRepository, job: this.jobRepository },
+      { id, description, dateTimeOriginal, latitude, longitude, rating, noLocation },
+    );
 
     const asset = await this.assetRepository.update({ id, ...rest });
 
@@ -127,6 +137,25 @@ export class AssetService extends BaseService {
     return mapAsset(asset, { auth });
   }
 
+  /**
+   * Pending assets enter and leave the review visibility only through the review endpoints, so the
+   * staged decisions and edits can never be bypassed by a plain visibility change.
+   */
+  private async requireNoReviewVisibilityChange(ids: string[], visibility?: AssetVisibility) {
+    if (visibility === undefined) {
+      return;
+    }
+
+    if (visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Assets can only be marked for review by uploading them for review');
+    }
+
+    const assets = await this.assetRepository.getByIds(ids);
+    if (assets.some((asset) => asset.visibility === AssetVisibility.Review)) {
+      throw new BadRequestException('Pending assets can only leave review by finishing the review');
+    }
+  }
+
   async updateAll(auth: AuthDto, dto: AssetBulkUpdateDto): Promise<void> {
     const {
       ids,
@@ -143,6 +172,7 @@ export class AssetService extends BaseService {
       noLocation,
     } = dto;
     await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids });
+    await this.requireNoReviewVisibilityChange(ids, visibility);
 
     const assetDto = _.omitBy({ isFavorite, visibility, duplicateId }, _.isUndefined);
     const exifDto = _.omitBy(
@@ -453,69 +483,5 @@ export class AssetService extends BaseService {
       throw new BadRequestException('Asset not found');
     }
     return asset;
-  }
-
-  private async updateExif(dto: {
-    id: string;
-    description?: string;
-    dateTimeOriginal?: string;
-    latitude?: number;
-    longitude?: number;
-    rating?: number;
-    noLocation?: boolean;
-  }) {
-    const { id, description, dateTimeOriginal, latitude, longitude, rating, noLocation } = dto;
-
-    // Mark No Location: clear all location data, set the marker, and lock the coordinates so a
-    // future metadata re-scan cannot resurrect GPS from the original file and flip the asset back.
-    if (noLocation === true) {
-      await this.assetRepository.upsertExif(
-        updateLockedColumns({
-          assetId: id,
-          latitude: null,
-          longitude: null,
-          city: null,
-          state: null,
-          country: null,
-          noLocation: true,
-        }),
-        { lockedPropertiesBehavior: 'append' },
-      );
-      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
-      return;
-    }
-
-    // Unassign: clear the marker and unlock the coordinates so a re-scan can legitimately re-derive them.
-    if (noLocation === false && latitude === undefined && longitude === undefined) {
-      await this.assetRepository.clearNoLocation([id]);
-      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
-      return;
-    }
-
-    const extractedTimeZone = dateTimeOriginal ? DateTime.fromISO(dateTimeOriginal, { setZone: true }).zone : undefined;
-    const writes = _.omitBy(
-      {
-        description,
-        dateTimeOriginal,
-        timeZone: extractedTimeZone?.type === 'fixed' ? extractedTimeZone.name : undefined,
-        latitude,
-        longitude,
-        rating,
-        // Assigning real coordinates always clears the No Location marker.
-        noLocation: latitude !== undefined || longitude !== undefined ? false : undefined,
-      },
-      _.isUndefined,
-    );
-
-    if (Object.keys(writes).length > 0) {
-      await this.assetRepository.upsertExif(
-        updateLockedColumns({
-          assetId: id,
-          ...writes,
-        }),
-        { lockedPropertiesBehavior: 'append' },
-      );
-      await this.jobRepository.queue({ name: JobName.SidecarWrite, data: { id } });
-    }
   }
 }

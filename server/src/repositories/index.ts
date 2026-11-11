@@ -33,6 +33,7 @@ import { PersonRepository } from 'src/repositories/person.repository';
 import { PluginRepository } from 'src/repositories/plugin.repository';
 import { ProcessRepository } from 'src/repositories/process.repository';
 import { RelationshipRepository } from 'src/repositories/relationship.repository';
+import { ReviewRepository } from 'src/repositories/review.repository';
 import { SavedLocationRepository } from 'src/repositories/saved-location.repository';
 import { SearchRepository } from 'src/repositories/search.repository';
 import { ServerInfoRepository } from 'src/repositories/server-info.repository';
@@ -89,6 +90,7 @@ export const repositories = [
   PluginRepository,
   ProcessRepository,
   RelationshipRepository,
+  ReviewRepository,
   SavedLocationRepository,
   SearchRepository,
   SessionRepository,

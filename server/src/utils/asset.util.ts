@@ -1,17 +1,21 @@
 import { BadRequestException } from '@nestjs/common';
+import _ from 'lodash';
+import { DateTime } from 'luxon';
 import { GeneratedImageType, StorageCore } from 'src/cores/storage.core';
 import { AssetFile } from 'src/database';
 import { BulkIdErrorReason, BulkIdResponseDto } from 'src/dtos/asset-ids.response.dto';
 import { UploadFieldName } from 'src/dtos/asset-media.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFileType, AssetType, AssetVisibility, Permission } from 'src/enum';
+import { AssetFileType, AssetType, AssetVisibility, JobName, Permission } from 'src/enum';
 import { AuthRequest } from 'src/middleware/auth.guard';
 import { AccessRepository } from 'src/repositories/access.repository';
 import { AssetRepository } from 'src/repositories/asset.repository';
 import { EventRepository } from 'src/repositories/event.repository';
+import { JobRepository } from 'src/repositories/job.repository';
 import { PartnerRepository } from 'src/repositories/partner.repository';
 import { IBulkAsset, ImmichFile, UploadFile, UploadRequest } from 'src/types';
 import { checkAccess } from 'src/utils/access';
+import { updateLockedColumns } from 'src/utils/database';
 
 export const getAssetFile = (files: AssetFile[], type: AssetFileType | GeneratedImageType) => {
   return files.find((file) => file.type === type);
@@ -198,4 +202,71 @@ export const asUploadRequest = (request: AuthRequest, file: Express.Multer.File)
     fieldName: file.fieldname as UploadFieldName,
     file: mapToUploadFile(file as ImmichFile),
   };
+};
+
+export const updateAssetExif = async (
+  repositories: { asset: AssetRepository; job: JobRepository },
+  dto: {
+    id: string;
+    description?: string;
+    dateTimeOriginal?: string;
+    latitude?: number;
+    longitude?: number;
+    rating?: number;
+    noLocation?: boolean;
+  },
+) => {
+  const { id, description, dateTimeOriginal, latitude, longitude, rating, noLocation } = dto;
+
+  // Mark No Location: clear all location data, set the marker, and lock the coordinates so a
+  // future metadata re-scan cannot resurrect GPS from the original file and flip the asset back.
+  if (noLocation === true) {
+    await repositories.asset.upsertExif(
+      updateLockedColumns({
+        assetId: id,
+        latitude: null,
+        longitude: null,
+        city: null,
+        state: null,
+        country: null,
+        noLocation: true,
+      }),
+      { lockedPropertiesBehavior: 'append' },
+    );
+    await repositories.job.queue({ name: JobName.SidecarWrite, data: { id } });
+    return;
+  }
+
+  // Unassign: clear the marker and unlock the coordinates so a re-scan can legitimately re-derive them.
+  if (noLocation === false && latitude === undefined && longitude === undefined) {
+    await repositories.asset.clearNoLocation([id]);
+    await repositories.job.queue({ name: JobName.SidecarWrite, data: { id } });
+    return;
+  }
+
+  const extractedTimeZone = dateTimeOriginal ? DateTime.fromISO(dateTimeOriginal, { setZone: true }).zone : undefined;
+  const writes = _.omitBy(
+    {
+      description,
+      dateTimeOriginal,
+      timeZone: extractedTimeZone?.type === 'fixed' ? extractedTimeZone.name : undefined,
+      latitude,
+      longitude,
+      rating,
+      // Assigning real coordinates always clears the No Location marker.
+      noLocation: latitude !== undefined || longitude !== undefined ? false : undefined,
+    },
+    _.isUndefined,
+  );
+
+  if (Object.keys(writes).length > 0) {
+    await repositories.asset.upsertExif(
+      updateLockedColumns({
+        assetId: id,
+        ...writes,
+      }),
+      { lockedPropertiesBehavior: 'append' },
+    );
+    await repositories.job.queue({ name: JobName.SidecarWrite, data: { id } });
+  }
 };

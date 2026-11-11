@@ -51,6 +51,10 @@ export class SearchService extends BaseService {
       requireElevatedPermission(auth);
     }
 
+    if (dto.visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Pending assets are only listed by the review endpoints');
+    }
+
     let checksum: Buffer | undefined;
     if (dto.checksum) {
       const encoding = dto.checksum.length === 28 ? 'base64' : 'hex';
@@ -87,6 +91,10 @@ export class SearchService extends BaseService {
       requireElevatedPermission(auth);
     }
 
+    if (dto.visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Pending assets are only listed by the review endpoints');
+    }
+
     const userIds = await this.getUserIdsToSearch(auth);
     const items = await this.searchRepository.searchRandom(dto.size || 250, { ...dto, userIds });
     return items.map((item) => mapAsset(item, { auth }));
@@ -97,6 +105,10 @@ export class SearchService extends BaseService {
       requireElevatedPermission(auth);
     }
 
+    if (dto.visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Pending assets are only listed by the review endpoints');
+    }
+
     const userIds = await this.getUserIdsToSearch(auth);
     const items = await this.searchRepository.searchLargeAssets(dto.size || 250, { ...dto, userIds });
     return items.map((item) => mapAsset(item, { auth }));
@@ -105,6 +117,10 @@ export class SearchService extends BaseService {
   async searchSmart(auth: AuthDto, dto: SmartSearchDto): Promise<SearchResponseDto> {
     if (dto.visibility === AssetVisibility.Locked) {
       requireElevatedPermission(auth);
+    }
+
+    if (dto.visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Pending assets are only listed by the review endpoints');
     }
 
     const { machineLearning } = await this.getConfig({ withCache: false });

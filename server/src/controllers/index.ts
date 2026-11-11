@@ -23,6 +23,7 @@ import { PersonController } from 'src/controllers/person.controller';
 import { PluginController } from 'src/controllers/plugin.controller';
 import { QueueController } from 'src/controllers/queue.controller';
 import { RelationshipController } from 'src/controllers/relationship.controller';
+import { ReviewController } from 'src/controllers/review.controller';
 import { SavedLocationController } from 'src/controllers/saved-location.controller';
 import { SearchController } from 'src/controllers/search.controller';
 import { ServerController } from 'src/controllers/server.controller';
@@ -66,6 +67,7 @@ export const controllers = [
   PluginController,
   QueueController,
   RelationshipController,
+  ReviewController,
   SavedLocationController,
   SearchController,
   ServerController,

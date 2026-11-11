@@ -6,6 +6,7 @@ import { AuthDto } from 'src/dtos/auth.dto';
 import {
   AssetOrder,
   AssetType,
+  AssetVisibility,
   DatabaseSslMode,
   ExifOrientation,
   ImageFormat,
@@ -471,6 +472,7 @@ export type StorageAsset = {
   originalPath: string;
   originalFileName: string;
   fileSizeInByte: number | null;
+  visibility: AssetVisibility;
   files: AssetFile[];
 };
 
@@ -481,6 +483,19 @@ export interface MemoryData {
 }
 
 export type VersionCheckMetadata = { checkedAt: string; releaseVersion: string };
+/** Changes entered against a pending asset, applied only if it is kept when the review is finished. */
+export type ReviewEdits = {
+  description?: string;
+  dateTimeOriginal?: string;
+  latitude?: number;
+  longitude?: number;
+  noLocation?: boolean;
+  rating?: number;
+  isFavorite?: boolean;
+  albumIds?: string[];
+  faces?: Array<{ faceId: string; personId: string }>;
+};
+
 export type SystemFlags = { mountChecks: Record<StorageFolder, boolean> };
 export type MaintenanceModeState = { isMaintenanceMode: true; secret: string } | { isMaintenanceMode: false };
 export type MemoriesState = {

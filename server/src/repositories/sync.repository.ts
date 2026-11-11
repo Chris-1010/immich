@@ -3,6 +3,7 @@ import { Kysely, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database';
 import { DummyValue, GenerateSql } from 'src/decorators';
+import { AssetVisibility } from 'src/enum';
 import { DB } from 'src/schema';
 import { SyncAck } from 'src/types';
 
@@ -402,6 +403,7 @@ class AssetSync extends BaseSync {
       .select(columns.syncAsset)
       .select('asset.updateId')
       .where('ownerId', '=', options.userId)
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .stream();
   }
 }
@@ -483,6 +485,7 @@ class AssetFaceSync extends BaseSync {
       ])
       .leftJoin('asset', 'asset.id', 'asset_face.assetId')
       .where('asset.ownerId', '=', options.userId)
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .stream();
   }
 }
@@ -493,7 +496,13 @@ class AssetExifSync extends BaseSync {
     return this.upsertQuery('asset_exif', options)
       .select(columns.syncAssetExif)
       .select('asset_exif.updateId')
-      .where('assetId', 'in', (eb) => eb.selectFrom('asset').select('id').where('ownerId', '=', options.userId))
+      .where('assetId', 'in', (eb) =>
+        eb
+          .selectFrom('asset')
+          .select('id')
+          .where('ownerId', '=', options.userId)
+          .where('visibility', '!=', AssetVisibility.Review),
+      )
       .stream();
   }
 }
@@ -600,6 +609,7 @@ class PartnerAssetsSync extends BaseSync {
       .select(columns.syncAsset)
       .select('asset.updateId')
       .where('ownerId', '=', partnerId)
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .stream();
   }
 
@@ -621,6 +631,7 @@ class PartnerAssetsSync extends BaseSync {
       .where('ownerId', 'in', (eb) =>
         eb.selectFrom('partner').select(['sharedById']).where('sharedWithId', '=', options.userId),
       )
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .stream();
   }
 }
@@ -633,6 +644,7 @@ class PartnerAssetExifsSync extends BaseSync {
       .select('asset_exif.updateId')
       .innerJoin('asset', 'asset.id', 'asset_exif.assetId')
       .where('asset.ownerId', '=', partnerId)
+      .where('asset.visibility', '!=', AssetVisibility.Review)
       .stream();
   }
 
@@ -647,7 +659,8 @@ class PartnerAssetExifsSync extends BaseSync {
           .select('id')
           .where('ownerId', 'in', (eb) =>
             eb.selectFrom('partner').select(['sharedById']).where('sharedWithId', '=', options.userId),
-          ),
+          )
+          .where('visibility', '!=', AssetVisibility.Review),
       )
       .stream();
   }

@@ -60,6 +60,7 @@ export const assetStub = {
     isExternal: false,
     checksum: Buffer.from('file hash'),
     timeZone: null,
+    visibility: AssetVisibility.Timeline,
     fileCreatedAt: new Date('2022-06-19T23:41:36.910Z'),
     originalPath: '/original/path.jpg',
     originalFileName: 'IMG_123.jpg',

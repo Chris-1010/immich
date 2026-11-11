@@ -49,6 +49,10 @@ export class TimelineService extends BaseService {
       requireElevatedPermission(auth);
     }
 
+    if (dto.visibility === AssetVisibility.Review) {
+      throw new BadRequestException('Pending assets are only listed by the review endpoints');
+    }
+
     if (dto.albumId) {
       await this.requireAccess({ auth, permission: Permission.AlbumRead, ids: [dto.albumId] });
     } else {

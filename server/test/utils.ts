@@ -49,6 +49,7 @@ import { PluginRepository } from 'src/repositories/plugin.repository';
 import { ProcessRepository } from 'src/repositories/process.repository';
 import { PersonDetailRepository } from 'src/repositories/person-detail.repository';
 import { RelationshipRepository } from 'src/repositories/relationship.repository';
+import { ReviewRepository } from 'src/repositories/review.repository';
 import { SavedLocationRepository } from 'src/repositories/saved-location.repository';
 import { SearchRepository } from 'src/repositories/search.repository';
 import { ServerInfoRepository } from 'src/repositories/server-info.repository';
@@ -246,6 +247,7 @@ export type ServiceOverrides = {
   plugin: PluginRepository;
   process: ProcessRepository;
   relationship: RelationshipRepository;
+  review: ReviewRepository;
   savedLocation: SavedLocationRepository;
   search: SearchRepository;
   serverInfo: ServerInfoRepository;
@@ -322,6 +324,7 @@ export const getMocks = () => {
     plugin: automock(PluginRepository, { strict: true }),
     process: automock(ProcessRepository),
     relationship: automock(RelationshipRepository, { strict: true }),
+    review: automock(ReviewRepository, { strict: true }),
     savedLocation: automock(SavedLocationRepository, { strict: true }),
     search: automock(SearchRepository, { strict: false }),
     // eslint-disable-next-line no-sparse-arrays
@@ -392,6 +395,7 @@ export const newTestService = <T extends BaseService>(
     overrides.plugin || (mocks.plugin as As<PluginRepository>),
     overrides.process || (mocks.process as As<ProcessRepository>),
     overrides.relationship || (mocks.relationship as As<RelationshipRepository>),
+    overrides.review || (mocks.review as As<ReviewRepository>),
     overrides.savedLocation || (mocks.savedLocation as As<SavedLocationRepository>),
     overrides.search || (mocks.search as As<SearchRepository>),
     overrides.serverInfo || (mocks.serverInfo as As<ServerInfoRepository>),

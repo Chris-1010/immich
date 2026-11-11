@@ -315,6 +315,7 @@ export enum StorageFolder {
   Profile = 'profile',
   Thumbnails = 'thumbs',
   Backups = 'backups',
+  Review = 'review',
 }
 
 export enum SystemMetadataKey {
@@ -834,6 +835,12 @@ export enum DatabaseSslMode {
   VerifyFull = 'verify-full',
 }
 
+export enum ReviewDecision {
+  Undecided = 'undecided',
+  Keep = 'keep',
+  Delete = 'delete',
+}
+
 export enum AssetVisibility {
   Archive = 'archive',
   Timeline = 'timeline',
@@ -843,6 +850,10 @@ export enum AssetVisibility {
    */
   Hidden = 'hidden',
   Locked = 'locked',
+  /**
+   * Pending asset awaiting review: uploaded but not yet accepted into the library
+   */
+  Review = 'review',
 }
 
 export enum CronJob {
@@ -874,6 +885,7 @@ export enum ApiTag {
   Plugins = 'Plugins',
   Queues = 'Queues',
   Relationships = 'Relationships',
+  Review = 'Review',
   SavedLocations = 'SavedLocations',
   Search = 'Search',
   Server = 'Server',

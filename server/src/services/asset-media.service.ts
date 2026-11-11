@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { extname } from 'node:path';
+import { basename, extname } from 'node:path';
 import sanitize from 'sanitize-filename';
 import { StorageCore } from 'src/cores/storage.core';
 import { Asset } from 'src/database';
@@ -411,6 +411,20 @@ export class AssetMediaService extends BaseService {
   }
 
   private async create(ownerId: string, dto: AssetMediaCreateDto, file: UploadFile, sidecarFile?: UploadFile) {
+    const isReview = dto.visibility === AssetVisibility.Review;
+    if (isReview) {
+      if (dto.livePhotoVideoId) {
+        throw new BadRequestException('A pending asset cannot be linked to a motion part');
+      }
+
+      // Pending assets live under review/ until the review is finished. Reassigning originalPath
+      // lets the upload error handler clean up the moved file if the insert below fails.
+      const reviewPath = StorageCore.getNestedPath(StorageFolder.Review, ownerId, basename(file.originalPath));
+      this.storageCore.ensureFolders(reviewPath);
+      await this.storageRepository.rename(file.originalPath, reviewPath);
+      file.originalPath = reviewPath;
+    }
+
     const asset = await this.assetRepository.create({
       ownerId,
       libraryId: null,
@@ -432,6 +446,10 @@ export class AssetMediaService extends BaseService {
       livePhotoVideoId: dto.livePhotoVideoId,
       originalFileName: dto.filename || file.originalName,
     });
+
+    if (isReview) {
+      await this.reviewRepository.create(asset.id);
+    }
 
     if (dto.metadata) {
       await this.assetRepository.upsertMetadata(asset.id, dto.metadata);

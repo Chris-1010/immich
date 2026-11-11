@@ -1220,6 +1220,48 @@ export type RelationshipUpdateDto = {
     subjectId: string;
     typeId: string;
 };
+export type ReviewFaceEditDto = {
+    /** A face detected on the pending asset. */
+    faceId: string;
+    /** The person the face is to be assigned to when the asset is kept. */
+    personId: string;
+};
+export type ReviewEditsDto = {
+    /** Albums the asset is to be added to. */
+    albumIds?: string[];
+    dateTimeOriginal?: string;
+    description?: string;
+    /** Face-to-person assignments to make. */
+    faces?: ReviewFaceEditDto[];
+    isFavorite?: boolean;
+    latitude?: number;
+    longitude?: number;
+    /** Mark the asset as deliberately having no location. */
+    noLocation?: boolean;
+    rating?: number;
+};
+export type ReviewItemResponseDto = {
+    assetId: string;
+    createdAt: string;
+    decision: ReviewDecision;
+    edits: ReviewEditsDto;
+    updatedAt: string;
+};
+export type ReviewFinishResponseDto = {
+    deleted: number;
+    kept: number;
+};
+export type ReviewUpdateDto = {
+    decision?: ReviewDecision;
+    /** Replaces every staged edit on the asset. */
+    edits?: ReviewEditsDto;
+};
+export type ReviewSimilarAssetResponseDto = {
+    /** A library asset that looks like the pending asset. */
+    assetId: string;
+    /** Visual distance between the two; smaller is more alike. */
+    distance: number;
+};
 export type SavedLocationResponseDto = {
     createdAt: string;
     id: string;
@@ -4298,6 +4340,58 @@ export function updateRelationship({ id, relationshipUpdateDto }: {
     })));
 }
 /**
+ * List pending assets
+ */
+export function getReviewItems(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ReviewItemResponseDto[];
+    }>("/review", {
+        ...opts
+    }));
+}
+/**
+ * Finish the review
+ */
+export function finishReview(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ReviewFinishResponseDto;
+    }>("/review/finish", {
+        ...opts,
+        method: "POST"
+    }));
+}
+/**
+ * Update a pending asset
+ */
+export function updateReviewItem({ id, reviewUpdateDto }: {
+    id: string;
+    reviewUpdateDto: ReviewUpdateDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ReviewItemResponseDto;
+    }>(`/review/${encodeURIComponent(id)}`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: reviewUpdateDto
+    })));
+}
+/**
+ * Find look-alikes in the library
+ */
+export function getReviewSimilar({ id }: {
+    id: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ReviewSimilarAssetResponseDto[];
+    }>(`/review/${encodeURIComponent(id)}/similar`, {
+        ...opts
+    }));
+}
+/**
  * List saved locations
  */
 export function getSavedLocations(opts?: Oazapfts.RequestOpts) {
@@ -5369,8 +5463,9 @@ export function tagAssets({ id, bulkIdsDto }: {
 /**
  * Get time bucket
  */
-export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates, hasCoordinates }: {
+export function getTimeBucket({ albumId, hasCoordinates, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucket, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
     albumId?: string;
+    hasCoordinates?: boolean;
     isFavorite?: boolean;
     isTrashed?: boolean;
     key?: string;
@@ -5386,13 +5481,13 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
     withPartners?: boolean;
     withStacked?: boolean;
     withoutCoordinates?: boolean;
-    hasCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: TimeBucketAssetResponseDto;
     }>(`/timeline/bucket${QS.query(QS.explode({
         albumId,
+        hasCoordinates,
         isFavorite,
         isTrashed,
         key,
@@ -5407,8 +5502,7 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
         withCoordinates,
         withPartners,
         withStacked,
-        withoutCoordinates,
-        hasCoordinates
+        withoutCoordinates
     }))}`, {
         ...opts
     }));
@@ -5416,8 +5510,9 @@ export function getTimeBucket({ albumId, isFavorite, isTrashed, key, order, pers
 /**
  * Get time buckets
  */
-export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates, hasCoordinates }: {
+export function getTimeBuckets({ albumId, hasCoordinates, isFavorite, isTrashed, key, order, personId, slug, tagId, timeBucketField, userId, visibility, withCoordinates, withPartners, withStacked, withoutCoordinates }: {
     albumId?: string;
+    hasCoordinates?: boolean;
     isFavorite?: boolean;
     isTrashed?: boolean;
     key?: string;
@@ -5432,13 +5527,13 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
     withPartners?: boolean;
     withStacked?: boolean;
     withoutCoordinates?: boolean;
-    hasCoordinates?: boolean;
 }, opts?: Oazapfts.RequestOpts) {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: TimeBucketsResponseDto[];
     }>(`/timeline/buckets${QS.query(QS.explode({
         albumId,
+        hasCoordinates,
         isFavorite,
         isTrashed,
         key,
@@ -5452,8 +5547,7 @@ export function getTimeBuckets({ albumId, isFavorite, isTrashed, key, order, per
         withCoordinates,
         withPartners,
         withStacked,
-        withoutCoordinates,
-        hasCoordinates
+        withoutCoordinates
     }))}`, {
         ...opts
     }));
@@ -5823,7 +5917,8 @@ export enum AssetVisibility {
     Archive = "archive",
     Timeline = "timeline",
     Hidden = "hidden",
-    Locked = "locked"
+    Locked = "locked",
+    Review = "review"
 }
 export enum AlbumUserRole {
     Editor = "editor",
@@ -6169,6 +6264,11 @@ export enum JobName {
 export enum RelationshipGender {
     Male = "male",
     Female = "female"
+}
+export enum ReviewDecision {
+    Undecided = "undecided",
+    Keep = "keep",
+    Delete = "delete"
 }
 export enum LocationSearchResultType {
     Saved = "saved",

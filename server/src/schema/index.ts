@@ -58,6 +58,7 @@ import { PersonRelationshipTable } from 'src/schema/tables/person-relationship.t
 import { PersonTable } from 'src/schema/tables/person.table';
 import { PluginActionTable, PluginFilterTable, PluginTable } from 'src/schema/tables/plugin.table';
 import { RelationshipTypeTable } from 'src/schema/tables/relationship-type.table';
+import { AssetReviewTable } from 'src/schema/tables/asset-review.table';
 import { SavedLocationTable } from 'src/schema/tables/saved-location.table';
 import { SessionTable } from 'src/schema/tables/session.table';
 import { SharedLinkAssetTable } from 'src/schema/tables/shared-link-asset.table';
@@ -121,6 +122,7 @@ export class ImmichDatabase {
     PersonRelationshipTable,
     PersonRelationshipOrderTable,
     PersonDetailTable,
+    AssetReviewTable,
     SavedLocationTable,
     SessionTable,
     SharedLinkAssetTable,
@@ -232,6 +234,7 @@ export interface DB {
 
   relationship_type: RelationshipTypeTable;
 
+  asset_review: AssetReviewTable;
   saved_location: SavedLocationTable;
 
   session: SessionTable;
