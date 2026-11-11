@@ -294,6 +294,9 @@
     try {
       const { kept, deleted } = await finishReview();
       toastManager.success($t('review_finished', { values: { kept, deleted } }));
+      // Empty the list before clearing the caches, so nothing reloads an asset that is no longer pending.
+      items = [];
+      index = 0;
       history = [];
       assets = {};
       facePeople = {};
