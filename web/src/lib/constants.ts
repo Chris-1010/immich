@@ -52,6 +52,7 @@ export enum AppRoute {
   AUTH_PIN_PROMPT = '/auth/pin-prompt',
 
   UTILITIES = '/utilities',
+  REVIEW = '/utilities/review',
   DUPLICATES = '/utilities/duplicates',
   LARGE_FILES = '/utilities/large-files',
   GEOLOCATION = '/utilities/geolocation',

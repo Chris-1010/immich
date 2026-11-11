@@ -7,12 +7,14 @@
     mdiCellphoneArrowDownVariant,
     mdiContentDuplicate,
     mdiCrosshairsGps,
+    mdiImageCheckOutline,
     mdiImageSizeSelectLarge,
     mdiLinkEdit,
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
 
   const links = [
+    { href: AppRoute.REVIEW, icon: mdiImageCheckOutline, label: $t('images_pending_review') },
     { href: AppRoute.DUPLICATES, icon: mdiContentDuplicate, label: $t('review_duplicates') },
     { href: AppRoute.LARGE_FILES, icon: mdiImageSizeSelectLarge, label: $t('review_large_files') },
     { href: AppRoute.GEOLOCATION, icon: mdiCrosshairsGps, label: $t('manage_geolocation') },

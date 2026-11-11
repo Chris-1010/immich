@@ -4,6 +4,7 @@
   import { preferences } from '$lib/stores/user.store';
   import { handlePromiseError } from '$lib/utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { getReviewStaging } from '$lib/utils/review-staging';
   import { updateAsset, type AssetResponseDto } from '@immich/sdk';
   import { t } from 'svelte-i18n';
 
@@ -16,7 +17,14 @@
 
   let rating = $derived(asset.exifInfo?.rating || 0);
 
+  const staging = getReviewStaging();
+
   const handleChangeRating = async (rating: number) => {
+    if (staging) {
+      staging.stage({ rating });
+      return;
+    }
+
     try {
       await updateAsset({ id: asset.id, updateAssetDto: { rating } });
     } catch (error) {

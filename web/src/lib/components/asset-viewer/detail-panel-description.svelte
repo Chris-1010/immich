@@ -1,6 +1,7 @@
 <script lang="ts">
   import AutogrowTextarea from '$lib/components/shared-components/autogrow-textarea.svelte';
   import { handleError } from '$lib/utils/handle-error';
+  import { getReviewStaging } from '$lib/utils/review-staging';
   import { updateAsset, type AssetResponseDto } from '@immich/sdk';
   import { toastManager } from '@immich/ui';
   import { t } from 'svelte-i18n';
@@ -14,7 +15,14 @@
 
   let description = $derived(asset.exifInfo?.description || '');
 
+  const staging = getReviewStaging();
+
   const handleFocusOut = async (newDescription: string) => {
+    if (staging) {
+      staging.stage({ description: newDescription });
+      return;
+    }
+
     try {
       await updateAsset({ id: asset.id, updateAssetDto: { description: newDescription } });
 

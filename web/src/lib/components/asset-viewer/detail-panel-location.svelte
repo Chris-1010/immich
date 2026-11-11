@@ -2,6 +2,7 @@
   import ChangeLocation, { type ChangeLocationResult } from '$lib/components/shared-components/change-location.svelte';
   import Portal from '$lib/elements/Portal.svelte';
   import { handleError } from '$lib/utils/handle-error';
+  import { getReviewStaging } from '$lib/utils/review-staging';
   import { updateAsset, type AssetResponseDto, type UpdateAssetDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import { mdiMapMarkerOutline, mdiPencil } from '@mdi/js';
@@ -16,10 +17,22 @@
 
   let isShowChangeLocation = $state(false);
 
+  const staging = getReviewStaging();
+
   const onClose = async (result?: ChangeLocationResult) => {
     isShowChangeLocation = false;
 
     if (!result) {
+      return;
+    }
+
+    if (staging) {
+      // A pending asset only records the change; clearing No Location drops any staged location.
+      staging.stage(
+        result.type === 'coordinates'
+          ? { latitude: result.point.lat, longitude: result.point.lng, noLocation: undefined }
+          : { latitude: undefined, longitude: undefined, noLocation: result.value || undefined },
+      );
       return;
     }
 

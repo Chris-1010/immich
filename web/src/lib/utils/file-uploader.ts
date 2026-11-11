@@ -43,10 +43,10 @@ export const addDummyItems = () => {
 
 export const uploadExecutionQueue = new ExecutorQueue({ concurrency: 2 });
 
-type FileUploadParam = { multiple?: boolean; albumId?: string };
+type FileUploadParam = { multiple?: boolean; albumId?: string; isReviewAssets?: boolean };
 
 export const openFileUploadDialog = async (options: FileUploadParam = {}) => {
-  const { albumId, multiple = true } = options;
+  const { albumId, multiple = true, isReviewAssets = false } = options;
   const extensions = uploadManager.getExtensions();
 
   return new Promise<string[]>((resolve, reject) => {
@@ -65,7 +65,7 @@ export const openFileUploadDialog = async (options: FileUploadParam = {}) => {
           }
           const files = Array.from(target.files);
 
-          resolve(fileUploadHandler({ files, albumId }));
+          resolve(fileUploadHandler({ files, albumId, isReviewAssets }));
         },
         { passive: true },
       );
@@ -86,6 +86,7 @@ export const fileUploadHandler = async ({
   files,
   albumId,
   isLockedAssets = false,
+  isReviewAssets = false,
 }: FileUploadHandlerParams): Promise<string[]> => {
   const extensions = uploadManager.getExtensions();
   const promises = [];
@@ -95,7 +96,9 @@ export const fileUploadHandler = async ({
       const deviceAssetId = getDeviceAssetId(file);
       uploadAssetsStore.addItem({ id: deviceAssetId, file, albumId });
       promises.push(
-        uploadExecutionQueue.addTask(() => fileUploader({ assetFile: file, deviceAssetId, albumId, isLockedAssets })),
+        uploadExecutionQueue.addTask(() =>
+          fileUploader({ assetFile: file, deviceAssetId, albumId, isLockedAssets, isReviewAssets }),
+        ),
       );
     }
   }
@@ -113,6 +116,8 @@ type FileUploaderParams = {
   albumId?: string;
   replaceAssetId?: string;
   isLockedAssets?: boolean;
+  /** Upload as pending assets for the review page rather than straight into the library. */
+  isReviewAssets?: boolean;
   deviceAssetId: string;
 };
 
@@ -122,6 +127,7 @@ async function fileUploader({
   deviceAssetId,
   albumId,
   isLockedAssets = false,
+  isReviewAssets = false,
 }: FileUploaderParams): Promise<string | undefined> {
   const fileCreatedAt = new Date(assetFile.lastModified).toISOString();
   const $t = get(t);
@@ -144,6 +150,8 @@ async function fileUploader({
 
     if (isLockedAssets) {
       formData.append('visibility', AssetVisibility.Locked);
+    } else if (isReviewAssets) {
+      formData.append('visibility', AssetVisibility.Review);
     }
 
     let responseData: { id: string; status: AssetMediaStatus; isTrashed?: boolean } | undefined;

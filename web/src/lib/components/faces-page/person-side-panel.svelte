@@ -8,6 +8,7 @@
   import { handleError } from '$lib/utils/handle-error';
   import { zoomImageToBase64 } from '$lib/utils/people-utils';
   import { getPersonNameWithHiddenValue } from '$lib/utils/person';
+  import { getReviewStaging } from '$lib/utils/review-staging';
   import {
     AssetTypeEnum,
     createPerson,
@@ -34,6 +35,9 @@
   }
 
   let { assetId, assetType, onClose, onRefresh }: Props = $props();
+
+  /** Present on the review page: assignments are staged against the pending asset, not saved. */
+  const staging = getReviewStaging();
 
   // Auto-detected faces on videos come from a low-res preview frame and are unrecognisable, so the
   // unassigned suggestions are hidden; only people that have actually been tagged are shown.
@@ -67,6 +71,14 @@
     const timeout = setTimeout(() => (isShowLoadingPeople = true), timeBeforeShowLoadingSpinner);
     try {
       peopleWithFaces = await getFaces({ id: assetId });
+      if (staging) {
+        const staged = staging.getStagedFaces();
+        for (const face of peopleWithFaces) {
+          if (staged[face.id]) {
+            selectedPersonToReassign[face.id] = staged[face.id];
+          }
+        }
+      }
     } catch (error) {
       handleError(error, $t('errors.cant_get_faces'));
     } finally {
@@ -107,7 +119,32 @@
     }
   };
 
+  const stageEditFaces = async () => {
+    const assignments: Array<{ faceId: string; person: PersonResponseDto }> = [];
+    try {
+      for (const face of peopleWithFaces) {
+        const person = selectedPersonToReassign[face.id];
+        if (person) {
+          assignments.push({ faceId: face.id, person });
+        } else if (selectedPersonToCreate[face.id]) {
+          // The new person exists from now on, but stays empty unless the asset is kept.
+          assignments.push({ faceId: face.id, person: await createPerson({ personCreateDto: {} }) });
+        }
+      }
+    } catch (error) {
+      handleError(error, $t('errors.cant_apply_changes'));
+    }
+
+    staging?.stageFaces(assignments);
+    onRefresh();
+  };
+
   const handleEditFaces = async () => {
+    if (staging) {
+      await stageEditFaces();
+      return;
+    }
+
     loaderLoadingDoneTimeout = setTimeout(() => (isShowLoadingDone = true), timeBeforeShowLoadingSpinner);
     const numberOfChanges = Object.keys(selectedPersonToCreate).length + Object.keys(selectedPersonToReassign).length;
 
@@ -340,7 +377,7 @@
                   </div>
                 {/if}
               </div>
-              {#if face.person != null}
+              {#if face.person != null && !staging}
                 <div class="absolute -end-[3px] top-8 h-5 w-5 rounded-full">
                   <IconButton
                     shape="round"

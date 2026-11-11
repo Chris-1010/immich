@@ -19,6 +19,7 @@
   import { getMetadataSearchQuery } from '$lib/utils/metadata-search';
   import { idsInRange } from '$lib/utils/range-select';
   import { fromISODateTime, fromISODateTimeUTC, toTimelineAsset } from '$lib/utils/timeline-util';
+  import { getReviewStaging } from '$lib/utils/review-staging';
   import { getParentPath } from '$lib/utils/tree-utils';
   import { getAltText } from '$lib/utils/thumbnail-util';
   import {
@@ -73,6 +74,9 @@
 
   let stackedAssets = $derived(stack?.assets ?? []);
   let stackIndex = $derived(stackedAssets.findIndex(({ id }) => id === asset.id));
+
+  /** Present on the review page, where edits are staged against a pending asset rather than saved. */
+  const staging = getReviewStaging();
 
   let showAssetPath = $state(false);
   let showEditFaces = $state(false);
@@ -174,7 +178,10 @@
   };
 
   const handleRefreshPeople = async () => {
-    asset = await getAssetInfo({ id: asset.id });
+    // A pending asset's people come from the review page, which merges in the staged assignments.
+    if (!staging) {
+      asset = await getAssetInfo({ id: asset.id });
+    }
     showEditFaces = false;
   };
 
@@ -197,6 +204,7 @@
       asset: toTimelineAsset(asset),
       initialDate: dateTime,
       initialTimeZone: timeZone,
+      onSubmit: staging ? (dateTimeOriginal: string) => staging.stage({ dateTimeOriginal }) : undefined,
     });
   };
 </script>
@@ -289,7 +297,7 @@
             />
           {/if}
 
-          {#if people.length > 0}
+          {#if people.length > 0 && !staging}
             <IconButton
               aria-label={bulkDetails
                 ? $t('people_selected_count', { values: { count: selected.length } })
@@ -314,15 +322,17 @@
               onclick={() => (showingHiddenPeople = !showingHiddenPeople)}
             />
           {/if}
-          <IconButton
-            aria-label={$t('tag_people')}
-            icon={mdiPlus}
-            size="medium"
-            shape="round"
-            color="secondary"
-            variant="ghost"
-            onclick={() => (isFaceEditMode.value = !isFaceEditMode.value)}
-          />
+          {#if !staging}
+            <IconButton
+              aria-label={$t('tag_people')}
+              icon={mdiPlus}
+              size="medium"
+              shape="round"
+              color="secondary"
+              variant="ghost"
+              onclick={() => (isFaceEditMode.value = !isFaceEditMode.value)}
+            />
+          {/if}
 
           {#if people.length > 0 || unassignedFaces.length > 0}
             <IconButton
@@ -709,7 +719,9 @@
 
 {#if $preferences?.tags?.enabled}
   <section class="relative px-2 pb-12 dark:bg-immich-dark-bg dark:text-immich-dark-fg">
-    <DetailPanelTags {asset} {isOwner} />
+    {#if !staging}
+      <DetailPanelTags {asset} {isOwner} />
+    {/if}
   </section>
 {/if}
 

@@ -16,10 +16,19 @@
     initialTimeZone?: string;
     timezoneInput?: boolean;
     asset: TimelineAsset;
+    /** Hand the chosen date back instead of saving it, as the review page does for a pending asset. */
+    onSubmit?: (isoDate: string) => void;
     onClose: (success: boolean) => void;
   }
 
-  let { initialDate = DateTime.now(), initialTimeZone, timezoneInput = true, asset, onClose }: Props = $props();
+  let {
+    initialDate = DateTime.now(),
+    initialTimeZone,
+    timezoneInput = true,
+    asset,
+    onSubmit,
+    onClose,
+  }: Props = $props();
 
   let selectedDate = $state(initialDate.toFormat("yyyy-MM-dd'T'HH:mm:ss.SSS"));
   const timezones = $derived(getTimezones(selectedDate));
@@ -37,6 +46,12 @@
 
     // Get the local date/time components from the selected string using neutral timezone
     const isoDate = toIsoDate(selectedDate, selectedOption);
+    if (onSubmit) {
+      onSubmit(isoDate);
+      onClose(true);
+      return;
+    }
+
     try {
       await updateAsset({ id: asset.id, updateAssetDto: { dateTimeOriginal: isoDate } });
       onClose(true);
