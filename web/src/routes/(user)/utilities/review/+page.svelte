@@ -1,6 +1,7 @@
 <script lang="ts">
   import DetailPanel from '$lib/components/asset-viewer/detail-panel.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
+  import ReviewPreview from '$lib/components/review/ReviewPreview.svelte';
   import ReviewThumbnail from '$lib/components/review/ReviewThumbnail.svelte';
   import { AppRoute } from '$lib/constants';
   import AlbumPickerModal from '$lib/modals/AlbumPickerModal.svelte';
@@ -11,7 +12,6 @@
   import { firstUndecidedIndex, mergeEdits, nextIndex, withStagedEdits } from '$lib/utils/review';
   import { setReviewStaging } from '$lib/utils/review-staging';
   import {
-    AssetMediaSize,
     finishReview,
     getAllAlbums,
     getAssetInfo,
@@ -39,6 +39,7 @@
     mdiTrashCanOutline,
     mdiUndo,
   } from '@mdi/js';
+  import { untrack } from 'svelte';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -90,10 +91,12 @@
     return () => photoViewerImgElement.set(null);
   });
 
+  // Only a change of image triggers loading. Reads inside the loader are untracked, otherwise storing
+  // its own results would re-run it in a loop.
   $effect(() => {
     const id = current?.assetId;
     if (id) {
-      void loadAsset(id);
+      untrack(() => void loadAsset(id));
     }
   });
 
@@ -128,13 +131,28 @@
         facePeople[id] = resolved;
       }
 
-      // Smart search may not have reached a fresh upload yet, so this is re-asked on every visit
-      // until something turns up.
-      if (!similar[id]?.length) {
-        similar[id] = await getReviewSimilar({ id });
-      }
     } catch (error) {
       handleError(error, $t('errors.failed_to_load_asset'));
+    }
+
+    void loadSimilar(id);
+  };
+
+  /**
+   * Smart search may not have reached a fresh upload yet, so this is re-asked on every visit until
+   * something turns up. The hint is optional, so a failure is not reported.
+   */
+  const loadSimilar = async (id: string) => {
+    if (similar[id]?.length || isFinishing) {
+      return;
+    }
+    try {
+      const matches = await getReviewSimilar({ id });
+      if (!isFinishing) {
+        similar[id] = matches;
+      }
+    } catch {
+      // The asset may have left review in the meantime.
     }
   };
 
@@ -453,12 +471,10 @@
         >
           {#if current}
             {#key current.assetId}
-              <img
-                bind:this={previewElement}
-                src={getAssetThumbnailUrl({ id: current.assetId, size: AssetMediaSize.Preview })}
+              <ReviewPreview
+                assetId={current.assetId}
                 alt={currentAsset?.originalFileName ?? ''}
-                class="max-h-full max-w-full object-contain"
-                draggable="false"
+                bind:element={previewElement}
               />
             {/key}
             {#if current.decision !== ReviewDecision.Undecided}
