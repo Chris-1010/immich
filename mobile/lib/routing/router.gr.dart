@@ -1515,6 +1515,22 @@ class DriftRecentlyTakenRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
+/// [DriftReviewPage]
+class DriftReviewRoute extends PageRouteInfo<void> {
+  const DriftReviewRoute({List<PageRouteInfo>? children})
+    : super(DriftReviewRoute.name, initialChildren: children);
+
+  static const String name = 'DriftReviewRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const DriftReviewPage();
+    },
+  );
+}
+
+/// generated route for
 /// [DriftSearchPage]
 class DriftSearchRoute extends PageRouteInfo<void> {
   const DriftSearchRoute({List<PageRouteInfo>? children})
