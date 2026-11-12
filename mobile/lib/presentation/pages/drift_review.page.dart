@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:immich_mobile/domain/models/review.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
 import 'package:immich_mobile/providers/review/review.provider.dart';
 import 'package:immich_mobile/providers/review/review.state.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
@@ -41,13 +46,37 @@ class DriftReviewPage extends ConsumerWidget {
   }
 }
 
-class _ReviewBody extends ConsumerWidget {
+class _ReviewBody extends ConsumerStatefulWidget {
   const _ReviewBody({required this.state});
 
   final ReviewState state;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ReviewBody> createState() => _ReviewBodyState();
+}
+
+class _ReviewBodyState extends ConsumerState<_ReviewBody> {
+  ReviewNotifier get _notifier => ref.read(reviewProvider.notifier);
+
+  void _decide(PendingDecision decision) {
+    unawaited(_notifier.decide(decision));
+  }
+
+  void _skip() {
+    _notifier.skip();
+  }
+
+  void _undo() {
+    unawaited(_notifier.undo());
+  }
+
+  /// Swipe up on the card. Reserved for the review details sheet.
+  void _onSwipeUp() {}
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+
     if (state.isLoading && state.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -57,13 +86,39 @@ class _ReviewBody extends ConsumerWidget {
         icon: Icons.cloud_off_rounded,
         message: 'pending_review_error_load'.t(context: context),
         action: TextButton(
-          onPressed: () => ref.read(reviewProvider.notifier).reload(),
+          onPressed: () => _notifier.reload(),
           child: Text('refresh'.t(context: context)),
         ),
       );
     }
 
-    return const SizedBox.shrink();
+    final current = state.current;
+    final canAct = current != null && !state.isFinishing;
+
+    return Column(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: current == null
+                ? const SizedBox.shrink()
+                : ReviewSwipeCard(
+                    key: ValueKey(current.assetId),
+                    assetId: current.assetId,
+                    swipeEnabled: canAct,
+                    onDecide: _decide,
+                    onSwipeUp: _onSwipeUp,
+                  ),
+          ),
+        ),
+        ReviewBottomBar(
+          onDelete: canAct ? () => _decide(PendingDecision.delete) : null,
+          onUndo: state.canUndo && !state.isFinishing ? _undo : null,
+          onSkip: canAct ? _skip : null,
+          onKeep: canAct ? () => _decide(PendingDecision.keep) : null,
+        ),
+      ],
+    );
   }
 }
 
