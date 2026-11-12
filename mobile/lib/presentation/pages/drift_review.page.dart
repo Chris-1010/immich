@@ -12,6 +12,7 @@ import 'package:immich_mobile/presentation/widgets/review/review_favorite_button
 import 'package:immich_mobile/presentation/widgets/review/review_similar.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_video.widget.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
 import 'package:immich_mobile/providers/review/review.provider.dart';
 import 'package:immich_mobile/providers/review/review.state.dart';
@@ -146,6 +147,16 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     });
   }
 
+  /// A tap on the card of a video opens the full-screen player.
+  Future<void> _onCardTap() async {
+    final current = widget.state.current;
+    final asset = current == null ? null : widget.state.assets[current.assetId];
+    if (asset == null || !isReviewVideo(asset)) {
+      return;
+    }
+    await _withOverlay(() => openReviewVideo(context, asset));
+  }
+
   /// Runs [open] with swipes disabled until it completes. Ignored while another overlay is open.
   Future<void> _withOverlay(Future<void> Function() open) async {
     if (_overlayOpen) {
@@ -217,7 +228,9 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
                     swipeEnabled: canAct && !_overlayOpen,
                     onDecide: _decide,
                     onSwipeUp: _onSwipeUp,
+                    onTap: _onCardTap,
                     overlays: [
+                      Positioned(top: 8, left: 8, child: ReviewVideoBadge(assetId: current.assetId)),
                       Positioned(top: 8, right: 8, child: ReviewFavoriteButton(assetId: current.assetId)),
                       Positioned(
                         left: 8,
