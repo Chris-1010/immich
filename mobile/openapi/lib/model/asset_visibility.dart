@@ -27,6 +27,7 @@ class AssetVisibility {
   static const timeline = AssetVisibility._(r'timeline');
   static const hidden = AssetVisibility._(r'hidden');
   static const locked = AssetVisibility._(r'locked');
+  static const review = AssetVisibility._(r'review');
 
   /// List of all possible values in this [enum][AssetVisibility].
   static const values = <AssetVisibility>[
@@ -34,6 +35,7 @@ class AssetVisibility {
     timeline,
     hidden,
     locked,
+    review,
   ];
 
   static AssetVisibility? fromJson(dynamic value) => AssetVisibilityTypeTransformer().decode(value);
@@ -76,6 +78,7 @@ class AssetVisibilityTypeTransformer {
         case r'timeline': return AssetVisibility.timeline;
         case r'hidden': return AssetVisibility.hidden;
         case r'locked': return AssetVisibility.locked;
+        case r'review': return AssetVisibility.review;
         default:
           if (!allowNull) {
             throw ArgumentError('Unknown enum value to decode: $data');

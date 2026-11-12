@@ -576,6 +576,20 @@ class ApiClient {
           return ReactionTypeTypeTransformer().decode(value);
         case 'ReverseGeocodingStateResponseDto':
           return ReverseGeocodingStateResponseDto.fromJson(value);
+        case 'ReviewDecision':
+          return ReviewDecisionTypeTransformer().decode(value);
+        case 'ReviewEditsDto':
+          return ReviewEditsDto.fromJson(value);
+        case 'ReviewFaceEditDto':
+          return ReviewFaceEditDto.fromJson(value);
+        case 'ReviewFinishResponseDto':
+          return ReviewFinishResponseDto.fromJson(value);
+        case 'ReviewItemResponseDto':
+          return ReviewItemResponseDto.fromJson(value);
+        case 'ReviewSimilarAssetResponseDto':
+          return ReviewSimilarAssetResponseDto.fromJson(value);
+        case 'ReviewUpdateDto':
+          return ReviewUpdateDto.fromJson(value);
         case 'RotateParameters':
           return RotateParameters.fromJson(value);
         case 'SearchAlbumResponseDto':

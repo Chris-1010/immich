@@ -11,6 +11,7 @@ import 'package:immich_mobile/presentation/widgets/people/partner_user_avatar.wi
 import 'package:immich_mobile/providers/infrastructure/album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/partner.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/people.provider.dart';
+import 'package:immich_mobile/providers/review/review.provider.dart';
 import 'package:immich_mobile/providers/server_info.provider.dart';
 import 'package:immich_mobile/presentation/widgets/images/remote_image_provider.dart';
 import 'package:immich_mobile/routing/router.dart';
@@ -381,6 +382,7 @@ class _QuickAccessButtonList extends ConsumerWidget {
                 ),
                 onTap: () => context.pushRoute(const DriftLockedFolderRoute()),
               ),
+              const _PendingReviewTile(),
               ListTile(
                 leading: const Icon(Icons.group_outlined, size: 26),
                 title: Text(
@@ -394,6 +396,38 @@ class _QuickAccessButtonList extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Entry to the review of assets pending review, with how many there are. Hidden when none are.
+class _PendingReviewTile extends ConsumerWidget {
+  const _PendingReviewTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(reviewPendingCountProvider).valueOrNull ?? 0;
+    if (count == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return ListTile(
+      leading: const Icon(Icons.rate_review_outlined, size: 26),
+      title: Text(
+        'pending_review'.t(context: context),
+        style: context.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w500),
+      ),
+      trailing: Badge(
+        label: Text(count.toString()),
+        backgroundColor: context.colorScheme.primary,
+        textColor: context.colorScheme.onPrimary,
+      ),
+      onTap: () async {
+        await context.pushRoute(const DriftReviewRoute());
+        if (context.mounted) {
+          ref.invalidate(reviewPendingCountProvider);
+        }
+      },
     );
   }
 }
