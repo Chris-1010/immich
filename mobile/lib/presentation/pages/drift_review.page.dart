@@ -8,6 +8,7 @@ import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_details_sheet.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_favorite_button.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
@@ -192,6 +193,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
                     swipeEnabled: canAct && !_sheetOpen,
                     onDecide: _decide,
                     onSwipeUp: _onSwipeUp,
+                    overlays: [Positioned(top: 8, right: 8, child: ReviewFavoriteButton(assetId: current.assetId))],
                   ),
           ),
         ),
