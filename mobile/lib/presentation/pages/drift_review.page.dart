@@ -9,6 +9,7 @@ import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_details_sheet.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_favorite_button.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_similar.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
@@ -71,8 +72,9 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   /// Set once Finish succeeded, so the emptied list does not flash the empty state on the way out.
   bool _finished = false;
 
-  /// Set while the details sheet is open, so left/right swipes cannot decide behind it.
-  bool _sheetOpen = false;
+  /// Set while a sheet, viewer or player is open over the card, so left/right swipes cannot
+  /// decide behind it.
+  bool _overlayOpen = false;
 
   void _decide(PendingDecision decision) {
     setState(() => _revisiting = false);
@@ -127,13 +129,35 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   /// Swipe up on the card opens the review details sheet for the current image.
   Future<void> _onSwipeUp() async {
     final current = widget.state.current;
-    if (current == null || _sheetOpen) {
+    if (current == null) {
       return;
     }
-    setState(() => _sheetOpen = true);
-    await showReviewDetailsSheet(context, current.assetId);
-    if (mounted) {
-      setState(() => _sheetOpen = false);
+    await _withOverlay(() => showReviewDetailsSheet(context, current.assetId));
+  }
+
+  /// The look-alike pill opens a sheet of library thumbnails; a tapped one opens full screen.
+  Future<void> _onSimilarTap(List<ReviewSimilarAsset> similar) async {
+    await _withOverlay(() async {
+      final assetId = await showReviewSimilarSheet(context, similar);
+      if (assetId == null || !mounted) {
+        return;
+      }
+      await openReviewLibraryAsset(context, ref, assetId);
+    });
+  }
+
+  /// Runs [open] with swipes disabled until it completes. Ignored while another overlay is open.
+  Future<void> _withOverlay(Future<void> Function() open) async {
+    if (_overlayOpen) {
+      return;
+    }
+    setState(() => _overlayOpen = true);
+    try {
+      await open();
+    } finally {
+      if (mounted) {
+        setState(() => _overlayOpen = false);
+      }
     }
   }
 
@@ -190,10 +214,17 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
                 : ReviewSwipeCard(
                     key: ValueKey(current.assetId),
                     assetId: current.assetId,
-                    swipeEnabled: canAct && !_sheetOpen,
+                    swipeEnabled: canAct && !_overlayOpen,
                     onDecide: _decide,
                     onSwipeUp: _onSwipeUp,
-                    overlays: [Positioned(top: 8, right: 8, child: ReviewFavoriteButton(assetId: current.assetId))],
+                    overlays: [
+                      Positioned(top: 8, right: 8, child: ReviewFavoriteButton(assetId: current.assetId)),
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: ReviewSimilarPill(assetId: current.assetId, onTap: _onSimilarTap),
+                      ),
+                    ],
                   ),
           ),
         ),

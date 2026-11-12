@@ -1735,6 +1735,8 @@
   "pending_review_finish_confirm": "Keeping {keep}, deleting {delete}. Deleted images are removed permanently.",
   "pending_review_finished": "Kept {kept}, deleted {deleted}",
   "pending_review_finishing": "Finishing…",
+  "pending_review_similar": "Similar to {count} in library",
+  "pending_review_similar_title": "Look-alikes in your library",
   "pending_review_skip": "Skip",
   "pending_review_staged": "Applied when you finish review, if kept",
   "people": "People",
