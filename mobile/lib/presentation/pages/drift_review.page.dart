@@ -9,8 +9,11 @@ import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
+import 'package:immich_mobile/providers/background_sync.provider.dart';
 import 'package:immich_mobile/providers/review/review.provider.dart';
 import 'package:immich_mobile/providers/review/review.state.dart';
+import 'package:immich_mobile/providers/tab.provider.dart';
+import 'package:immich_mobile/routing/router.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 
 /// Review of the assets pending review: decide Keep or Delete for each, then finish.
@@ -59,11 +62,20 @@ class _ReviewBody extends ConsumerStatefulWidget {
 class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   ReviewNotifier get _notifier => ref.read(reviewProvider.notifier);
 
+  /// Set when a thumbnail is tapped once everything is decided, so the card shows for a change of
+  /// mind instead of the Finish panel. Cleared by the next decision or skip.
+  bool _revisiting = false;
+
+  /// Set once Finish succeeded, so the emptied list does not flash the empty state on the way out.
+  bool _finished = false;
+
   void _decide(PendingDecision decision) {
+    setState(() => _revisiting = false);
     unawaited(_notifier.decide(decision));
   }
 
   void _skip() {
+    setState(() => _revisiting = false);
     _notifier.skip();
   }
 
@@ -72,7 +84,39 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   }
 
   void _jumpTo(int index) {
+    setState(() => _revisiting = true);
     _notifier.jumpTo(index);
+  }
+
+  Future<void> _finish() async {
+    final state = widget.state;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _FinishConfirmDialog(keepCount: state.keepCount, deleteCount: state.deleteCount),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final result = await _notifier.finish();
+    if (result == null || !mounted) {
+      return;
+    }
+    setState(() => _finished = true);
+
+    ImmichToast.show(
+      context: context,
+      msg: 'pending_review_finished'.t(context: context, args: {'kept': result.kept, 'deleted': result.deleted}),
+      toastType: ToastType.success,
+    );
+    // Kept assets reach the timeline through the normal remote sync.
+    unawaited(ref.read(backgroundSyncProvider).syncRemote());
+
+    final router = context.router;
+    final tab = ref.read(tabProvider.notifier);
+    router.popUntilRouteWithName(TabShellRoute.name);
+    await router.navigate(const TabShellRoute(children: [MainTimelineRoute()]));
+    tab.state = TabEnum.home;
   }
 
   /// Swipe up on the card. Reserved for the review details sheet.
@@ -82,7 +126,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   Widget build(BuildContext context) {
     final state = widget.state;
 
-    if (state.isLoading && state.items.isEmpty) {
+    if (_finished || (state.isLoading && state.items.isEmpty)) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -105,7 +149,8 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     }
 
     final current = state.current;
-    final canAct = current != null && !state.isFinishing;
+    final showFinish = state.canFinish && !_revisiting;
+    final canAct = current != null && !state.isFinishing && !showFinish;
 
     return Column(
       children: [
@@ -123,7 +168,9 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: current == null
+            child: showFinish
+                ? _FinishPanel(isFinishing: state.isFinishing, onFinish: _finish)
+                : current == null
                 ? const SizedBox.shrink()
                 : ReviewSwipeCard(
                     key: ValueKey(current.assetId),
@@ -167,6 +214,67 @@ class _ReviewMessage extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FinishPanel extends StatelessWidget {
+  const _FinishPanel({required this.isFinishing, required this.onFinish});
+
+  final bool isFinishing;
+  final VoidCallback onFinish;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isFinishing) {
+      return _ReviewMessage(
+        icon: Icons.hourglass_top_rounded,
+        message: 'pending_review_finishing'.t(context: context),
+        action: const Padding(padding: EdgeInsets.only(top: 8), child: CircularProgressIndicator()),
+      );
+    }
+    return _ReviewMessage(
+      icon: Icons.task_alt_rounded,
+      message: 'pending_review_all_decided'.t(context: context),
+      action: FilledButton.icon(
+        onPressed: onFinish,
+        icon: const Icon(Icons.done_all_rounded),
+        label: Text('pending_review_finish'.t(context: context)),
+      ),
+    );
+  }
+}
+
+class _FinishConfirmDialog extends StatelessWidget {
+  const _FinishConfirmDialog({required this.keepCount, required this.deleteCount});
+
+  final int keepCount;
+  final int deleteCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+      title: Text('pending_review_finish'.t(context: context)),
+      content: Text(
+        'pending_review_finish_confirm'.t(context: context, args: {'keep': keepCount, 'delete': deleteCount}),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'cancel'.t(context: context),
+            style: TextStyle(color: context.primaryColor, fontWeight: FontWeight.bold),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(
+            'pending_review_finish'.t(context: context),
+            style: TextStyle(color: context.colorScheme.error, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
     );
   }
 }
