@@ -7,6 +7,7 @@ import 'package:immich_mobile/domain/models/review.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_details_sheet.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
 import 'package:immich_mobile/providers/background_sync.provider.dart';
@@ -69,6 +70,9 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
   /// Set once Finish succeeded, so the emptied list does not flash the empty state on the way out.
   bool _finished = false;
 
+  /// Set while the details sheet is open, so left/right swipes cannot decide behind it.
+  bool _sheetOpen = false;
+
   void _decide(PendingDecision decision) {
     setState(() => _revisiting = false);
     unawaited(_notifier.decide(decision));
@@ -119,8 +123,18 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     tab.state = TabEnum.home;
   }
 
-  /// Swipe up on the card. Reserved for the review details sheet.
-  void _onSwipeUp() {}
+  /// Swipe up on the card opens the review details sheet for the current image.
+  Future<void> _onSwipeUp() async {
+    final current = widget.state.current;
+    if (current == null || _sheetOpen) {
+      return;
+    }
+    setState(() => _sheetOpen = true);
+    await showReviewDetailsSheet(context, current.assetId);
+    if (mounted) {
+      setState(() => _sheetOpen = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,7 +189,7 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
                 : ReviewSwipeCard(
                     key: ValueKey(current.assetId),
                     assetId: current.assetId,
-                    swipeEnabled: canAct,
+                    swipeEnabled: canAct && !_sheetOpen,
                     onDecide: _decide,
                     onSwipeUp: _onSwipeUp,
                   ),
