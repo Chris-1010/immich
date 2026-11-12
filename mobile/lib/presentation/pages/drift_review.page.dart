@@ -7,6 +7,7 @@ import 'package:immich_mobile/domain/models/review.model.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
 import 'package:immich_mobile/extensions/translate_extensions.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_bottom_bar.widget.dart';
+import 'package:immich_mobile/presentation/widgets/review/review_strip.widget.dart';
 import 'package:immich_mobile/presentation/widgets/review/review_swipe_card.widget.dart';
 import 'package:immich_mobile/providers/review/review.provider.dart';
 import 'package:immich_mobile/providers/review/review.state.dart';
@@ -70,6 +71,10 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
     unawaited(_notifier.undo());
   }
 
+  void _jumpTo(int index) {
+    _notifier.jumpTo(index);
+  }
+
   /// Swipe up on the card. Reserved for the review details sheet.
   void _onSwipeUp() {}
 
@@ -92,11 +97,29 @@ class _ReviewBodyState extends ConsumerState<_ReviewBody> {
       );
     }
 
+    if (state.items.isEmpty) {
+      return _ReviewMessage(
+        icon: Icons.task_alt_rounded,
+        message: 'pending_review_empty'.t(context: context),
+      );
+    }
+
     final current = state.current;
     final canAct = current != null && !state.isFinishing;
 
     return Column(
       children: [
+        ReviewStrip(items: state.items, currentIndex: state.index, onTap: _jumpTo),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'pending_review_decided_count'.t(
+              context: context,
+              args: {'decided': state.decidedCount, 'total': state.total},
+            ),
+            style: context.textTheme.labelLarge?.copyWith(color: context.colorScheme.onSurfaceVariant),
+          ),
+        ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
