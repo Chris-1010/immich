@@ -1736,6 +1736,7 @@
   "pending_review_finished": "Kept {kept}, deleted {deleted}",
   "pending_review_finishing": "Finishing…",
   "pending_review_skip": "Skip",
+  "pending_review_staged": "Applied when you finish review, if kept",
   "people": "People",
   "people_edits_count": "Edited {count, plural, one {# person} other {# people}}",
   "people_feature_description": "Browsing photos and videos grouped by people",
