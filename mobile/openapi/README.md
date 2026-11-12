@@ -220,6 +220,10 @@ Class | Method | HTTP request | Description
 *QueuesApi* | [**getQueues**](doc//QueuesApi.md#getqueues) | **GET** /queues | List all queues
 *QueuesApi* | [**updateQueue**](doc//QueuesApi.md#updatequeue) | **PUT** /queues/{name} | Update a queue
 *SearchApi* | [**getAssetsByCity**](doc//SearchApi.md#getassetsbycity) | **GET** /search/cities | Retrieve assets by city
+*ReviewApi* | [**finishReview**](doc//ReviewApi.md#finishreview) | **POST** /review/finish | Finish the review
+*ReviewApi* | [**getReviewItems**](doc//ReviewApi.md#getreviewitems) | **GET** /review | List pending assets
+*ReviewApi* | [**getReviewSimilar**](doc//ReviewApi.md#getreviewsimilar) | **GET** /review/{id}/similar | Find look-alikes in the library
+*ReviewApi* | [**updateReviewItem**](doc//ReviewApi.md#updatereviewitem) | **PUT** /review/{id} | Update a pending asset
 *SearchApi* | [**getExploreData**](doc//SearchApi.md#getexploredata) | **GET** /search/explore | Retrieve explore data
 *SearchApi* | [**getSearchSuggestions**](doc//SearchApi.md#getsearchsuggestions) | **GET** /search/suggestions | Retrieve search suggestions
 *SearchApi* | [**searchAssetStatistics**](doc//SearchApi.md#searchassetstatistics) | **POST** /search/statistics | Search asset statistics
@@ -527,6 +531,13 @@ Class | Method | HTTP request | Description
  - [ReactionLevel](doc//ReactionLevel.md)
  - [ReactionType](doc//ReactionType.md)
  - [ReverseGeocodingStateResponseDto](doc//ReverseGeocodingStateResponseDto.md)
+ - [ReviewDecision](doc//ReviewDecision.md)
+ - [ReviewEditsDto](doc//ReviewEditsDto.md)
+ - [ReviewFaceEditDto](doc//ReviewFaceEditDto.md)
+ - [ReviewFinishResponseDto](doc//ReviewFinishResponseDto.md)
+ - [ReviewItemResponseDto](doc//ReviewItemResponseDto.md)
+ - [ReviewSimilarAssetResponseDto](doc//ReviewSimilarAssetResponseDto.md)
+ - [ReviewUpdateDto](doc//ReviewUpdateDto.md)
  - [RotateParameters](doc//RotateParameters.md)
  - [SearchAlbumResponseDto](doc//SearchAlbumResponseDto.md)
  - [SearchAssetResponseDto](doc//SearchAssetResponseDto.md)
