@@ -21,6 +21,15 @@ export class AssetMediaOptionsDto {
   size?: AssetMediaSize;
 }
 
+export class AssetMediaPlaybackDto {
+  @ValidateBoolean({
+    optional: true,
+    description:
+      'Serve the cast-compatible copy (at most 1920x1080, rotation applied) when one exists, otherwise the normal playback file',
+  })
+  cast?: boolean;
+}
+
 export enum UploadFieldName {
   ASSET_DATA = 'assetData',
   SIDECAR_DATA = 'sidecarData',

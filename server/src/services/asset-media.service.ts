@@ -15,6 +15,7 @@ import {
   AssetBulkUploadCheckDto,
   AssetMediaCreateDto,
   AssetMediaOptionsDto,
+  AssetMediaPlaybackDto,
   AssetMediaReplaceDto,
   AssetMediaSize,
   CheckExistingAssetsDto,
@@ -248,7 +249,7 @@ export class AssetMediaService extends BaseService {
     });
   }
 
-  async playbackVideo(auth: AuthDto, id: string): Promise<ImmichFileResponse> {
+  async playbackVideo(auth: AuthDto, id: string, dto: AssetMediaPlaybackDto = {}): Promise<ImmichFileResponse> {
     await this.requireAccess({ auth, permission: Permission.AssetView, ids: [id] });
 
     const asset = await this.findOrFail(id);
@@ -257,7 +258,8 @@ export class AssetMediaService extends BaseService {
       throw new BadRequestException('Asset is not a video');
     }
 
-    const filepath = asset.encodedVideoPath || asset.originalPath;
+    const castPath = dto.cast ? getAssetFiles(asset.files ?? []).castVideoFile?.path : undefined;
+    const filepath = castPath || asset.encodedVideoPath || asset.originalPath;
 
     return new ImmichFileResponse({
       path: filepath,

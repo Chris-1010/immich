@@ -31,4 +31,20 @@ describe('StorageCore', () => {
       expect(StorageCore.isImmichPath(nonImmichPath)).toBe(false);
     });
   });
+
+  describe('getCastVideoPath', () => {
+    beforeAll(() => {
+      StorageCore.setMediaLocation('/photos');
+    });
+
+    it('should place the cast copy next to the encoded video', () => {
+      const asset = { id: 'abcdef12-0000-0000-0000-000000000000', ownerId: 'user-1' };
+      expect(StorageCore.getCastVideoPath(asset)).toBe(
+        '/photos/encoded-video/user-1/ab/cd/abcdef12-0000-0000-0000-000000000000-cast.mp4',
+      );
+      expect(StorageCore.getEncodedVideoPath(asset)).toBe(
+        '/photos/encoded-video/user-1/ab/cd/abcdef12-0000-0000-0000-000000000000.mp4',
+      );
+    });
+  });
 });

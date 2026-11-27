@@ -3762,6 +3762,15 @@
         "operationId": "playAssetVideo",
         "parameters": [
           {
+            "name": "cast",
+            "required": false,
+            "in": "query",
+            "description": "Serve the cast-compatible copy (at most 1920x1080, rotation applied) when one exists, otherwise the normal playback file",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "id",
             "required": true,
             "in": "path",
@@ -18455,6 +18464,7 @@
           "AssetDetectDuplicates",
           "AssetEncodeVideoQueueAll",
           "AssetEncodeVideo",
+          "AssetEncodeCastVideo",
           "AssetEmptyTrash",
           "AssetExtractMetadataQueueAll",
           "AssetExtractMetadata",

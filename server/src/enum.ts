@@ -45,6 +45,10 @@ export enum AssetFileType {
   Preview = 'preview',
   Thumbnail = 'thumbnail',
   Sidecar = 'sidecar',
+  /**
+   * A cast-only copy of a video, sized and rotated for strict cast receivers
+   */
+  CastVideo = 'cast_video',
 }
 
 export enum AlbumUserRole {
@@ -388,6 +392,7 @@ export enum AssetPathType {
   Thumbnail = 'thumbnail',
   EncodedVideo = 'encoded_video',
   Sidecar = 'sidecar',
+  CastVideo = 'cast_video',
 }
 
 export enum PersonPathType {
@@ -597,6 +602,7 @@ export enum JobName {
   AssetDetectDuplicates = 'AssetDetectDuplicates',
   AssetEncodeVideoQueueAll = 'AssetEncodeVideoQueueAll',
   AssetEncodeVideo = 'AssetEncodeVideo',
+  AssetEncodeCastVideo = 'AssetEncodeCastVideo',
   AssetEmptyTrash = 'AssetEmptyTrash',
   AssetExtractMetadataQueueAll = 'AssetExtractMetadataQueueAll',
   AssetExtractMetadata = 'AssetExtractMetadata',

@@ -1,8 +1,9 @@
 import { SystemConfigFFmpegDto } from 'src/dtos/system-config.dto';
-import { CQMode, ToneMapping, TranscodeHardwareAcceleration, TranscodeTarget, VideoCodec } from 'src/enum';
+import { AudioCodec, CQMode, ToneMapping, TranscodeHardwareAcceleration, TranscodeTarget, VideoCodec } from 'src/enum';
 import {
   AudioStreamInfo,
   BitrateDistribution,
+  ImageDimensions,
   TranscodeCommand,
   VideoCodecHWConfig,
   VideoCodecSWConfig,
@@ -981,3 +982,113 @@ export class RkmppHwDecodeConfig extends RkmppSwDecodeConfig {
     return [];
   }
 }
+
+/**
+ * Largest coded frame a strict cast receiver (e.g. LG webOS Google Cast) accepts.
+ * Portrait frames taller than 1080 px are rejected, so both limits apply regardless of orientation.
+ */
+export const CAST_MAX_WIDTH = 1920;
+export const CAST_MAX_HEIGHT = 1080;
+
+const normalizeRotation = (rotation: number) => (((rotation || 0) % 360) + 360) % 360;
+
+/**
+ * A video needs a cast-only copy unless its main video stream is already H.264, yuv420p,
+ * unrotated and within 1920x1080. Such receivers ignore rotation metadata, so any rotation needs a copy.
+ */
+export const isCastCopyRequired = (videoStream: VideoStreamInfo): boolean => {
+  const compliant =
+    videoStream.codecName === VideoCodec.H264 &&
+    videoStream.pixelFormat === 'yuv420p' &&
+    normalizeRotation(videoStream.rotation) === 0 &&
+    videoStream.width <= CAST_MAX_WIDTH &&
+    videoStream.height <= CAST_MAX_HEIGHT;
+  return !compliant;
+};
+
+const CAST_DEFAULT_CRF = 23;
+const CAST_DEFAULT_PRESET = 'medium';
+const CAST_X264_PRESETS = new Set([
+  'veryslow',
+  'slower',
+  'slow',
+  'medium',
+  'fast',
+  'faster',
+  'veryfast',
+  'superfast',
+  'ultrafast',
+]);
+
+/**
+ * Output frame size for a cast copy: the displayed (post-rotation) size, scaled down to fit
+ * within 1920x1080 with aspect ratio kept, rounded down to even dimensions, never upscaled.
+ */
+export const getCastSize = (videoStream: VideoStreamInfo): ImageDimensions => {
+  const rotation = normalizeRotation(videoStream.rotation);
+  const sideways = rotation === 90 || rotation === 270;
+  const displayWidth = sideways ? videoStream.height : videoStream.width;
+  const displayHeight = sideways ? videoStream.width : videoStream.height;
+  const factor = Math.min(1, CAST_MAX_WIDTH / displayWidth, CAST_MAX_HEIGHT / displayHeight);
+  const toEven = (value: number) => Math.max(2, Math.floor(value / 2) * 2);
+  return { width: toEven(displayWidth * factor), height: toEven(displayHeight * factor) };
+};
+
+/**
+ * ffmpeg arguments for a cast-only copy. Software decode and encode only: ffmpeg's default autorotate
+ * bakes rotation into the pixels and the output carries no display matrix, which strict cast receivers need.
+ */
+export const getCastCommand = (
+  config: SystemConfigFFmpegDto,
+  videoStream: VideoStreamInfo,
+  audioStream?: AudioStreamInfo,
+): TranscodeCommand => {
+  const { width, height } = getCastSize(videoStream);
+  const filters = [`scale=${width}:${height}`];
+  if (videoStream.isHDR) {
+    const tonemap = config.tonemap === ToneMapping.Disabled ? ToneMapping.Hable : config.tonemap;
+    filters.push(`tonemapx=tonemap=${tonemap}:desat=0:p=bt709:t=bt709:m=bt709:r=pc:peak=100:format=yuv420p`);
+  } else {
+    filters.push('format=yuv420p');
+  }
+
+  const isH264Target = config.targetVideoCodec === VideoCodec.H264;
+  const crf = isH264Target ? config.crf : CAST_DEFAULT_CRF;
+  const preset = CAST_X264_PRESETS.has(config.preset) ? config.preset : CAST_DEFAULT_PRESET;
+
+  const outputOptions = [
+    `-map 0:${videoStream.index}`,
+    ...(audioStream ? [`-map 0:${audioStream.index}`] : []),
+    // Strip metadata like capture date, camera, and GPS
+    '-map_metadata -1',
+    '-c:v libx264',
+    '-profile:v high',
+    '-level:v 4.1',
+    `-preset ${preset}`,
+    `-crf ${crf}`,
+    '-maxrate 20M',
+    '-bufsize 40M',
+    `-vf ${filters.join(',')}`,
+    '-fps_mode passthrough',
+    // Rotation is already applied to the pixels, so make sure no rotation tag survives
+    '-metadata:s:v:0 rotate=0',
+    ...(audioStream ? [`-c:a ${audioStream.codecName === AudioCodec.Aac ? 'copy' : AudioCodec.Aac}`] : []),
+    '-movflags +faststart',
+    '-f mp4',
+    '-v verbose',
+  ];
+
+  if (config.threads > 0) {
+    outputOptions.push(`-threads ${config.threads}`);
+    if (config.threads === 1) {
+      outputOptions.push('-x264-params frame-threads=1:pools=none');
+    }
+  }
+
+  return {
+    inputOptions: [],
+    outputOptions,
+    twoPass: false,
+    progress: { frameCount: videoStream.frameCount, percentInterval: 5 },
+  };
+};

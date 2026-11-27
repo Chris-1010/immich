@@ -282,11 +282,36 @@ export class AssetJobRepository {
       .stream();
   }
 
+  @GenerateSql({ params: [], stream: true })
+  streamForCastVideoConversion() {
+    return this.db
+      .selectFrom('asset')
+      .select(['asset.id'])
+      .where('asset.type', '=', AssetType.Video)
+      .where('asset.encodedVideoPath', 'is not', null)
+      .where('asset.encodedVideoPath', '!=', '')
+      .where('asset.visibility', '!=', AssetVisibility.Hidden)
+      .where('asset.deletedAt', 'is', null)
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('asset_file')
+              .select('asset_file.id')
+              .whereRef('asset_file.assetId', '=', 'asset.id')
+              .where('asset_file.type', '=', AssetFileType.CastVideo),
+          ),
+        ),
+      )
+      .stream();
+  }
+
   @GenerateSql({ params: [DummyValue.UUID] })
   getForVideoConversion(id: string) {
     return this.db
       .selectFrom('asset')
-      .select(['asset.id', 'asset.ownerId', 'asset.originalPath', 'asset.encodedVideoPath'])
+      .select(['asset.id', 'asset.ownerId', 'asset.originalPath', 'asset.encodedVideoPath', 'asset.visibility'])
+      .select((eb) => withFilePath(eb, AssetFileType.CastVideo).as('castVideoPath'))
       .where('asset.id', '=', id)
       .where('asset.type', '=', AssetType.Video)
       .executeTakeFirst();
