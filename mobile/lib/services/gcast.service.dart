@@ -167,8 +167,14 @@ class GCastService {
   }
 
   Future<void> disconnect() async {
+    // Update the UI straight away rather than waiting for the receiver to close
+    // the socket, which can take a while.
+    _mediaStatusPollingTimer?.cancel();
+    isConnected = false;
+    onConnectionState?.call(false);
     onReceiverName?.call("");
     currentAssetId = null;
+    _loadingAsset = null;
     await _gCastRepository.disconnect();
   }
 

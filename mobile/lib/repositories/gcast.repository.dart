@@ -3,12 +3,14 @@ import 'package:cast/session.dart';
 import 'package:cast/session_manager.dart';
 import 'package:cast/discovery_service.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:logging/logging.dart';
 
 final gCastRepositoryProvider = Provider((_) {
   return GCastRepository();
 });
 
 class GCastRepository {
+  final _log = Logger('GCastRepository');
   CastSession? _castSession;
 
   void Function(CastSessionState)? onCastStatus;
@@ -37,14 +39,31 @@ class GCastRepository {
   }
 
   Future<void> disconnect() async {
+    final session = _castSession;
+    if (session == null) {
+      return;
+    }
+
+    // Detach first so repeated taps on "stop casting" and late play/pause calls
+    // do not reach a socket that is being torn down.
     final sessionID = getSessionId();
+    _castSession = null;
+    _receiverStatus = null;
 
-    sendMessage(CastSession.kNamespaceReceiver, {'type': "STOP", "sessionId": sessionID});
+    try {
+      if (session.state != CastSessionState.closed) {
+        session.sendMessage(CastSession.kNamespaceReceiver, {'type': "STOP", "sessionId": sessionID});
 
-    // wait 500ms to ensure the stop command is processed
-    await Future.delayed(const Duration(milliseconds: 500));
+        // wait 500ms to ensure the stop command is processed
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
 
-    await _castSession?.close();
+      await session.close();
+    } catch (error) {
+      // The receiver usually closes the connection itself once it has stopped,
+      // so the socket may already be gone; there is nothing left to tear down.
+      _log.fine('Cast session already closed while disconnecting: $error');
+    }
   }
 
   String? getSessionId() {
@@ -55,11 +74,19 @@ class GCastRepository {
   }
 
   void sendMessage(String namespace, Map<String, dynamic> message) {
-    if (_castSession == null) {
-      throw Exception("Cast session is not established");
+    final session = _castSession;
+    if (session == null || session.state == CastSessionState.closed) {
+      _log.fine('Dropping ${message['type']} message: no open cast session');
+      return;
     }
 
-    _castSession!.sendMessage(namespace, message);
+    try {
+      session.sendMessage(namespace, message);
+    } catch (error) {
+      // The receiver can close the socket at any moment (e.g. when it is turned
+      // off or stops the app), before the session reports itself closed.
+      _log.warning('Failed to send ${message['type']} message to the cast receiver: $error');
+    }
   }
 
   Future<List<CastDevice>> listDestinations() async {
