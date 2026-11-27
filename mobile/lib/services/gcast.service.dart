@@ -11,6 +11,7 @@ import 'package:immich_mobile/repositories/asset_api.repository.dart';
 import 'package:immich_mobile/repositories/gcast.repository.dart';
 import 'package:immich_mobile/repositories/sessions_api.repository.dart';
 import 'package:immich_mobile/utils/image_url_builder.dart';
+import 'package:logging/logging.dart';
 // ignore: import_rule_openapi, we are only using the AssetMediaSize enum
 import 'package:openapi/api.dart';
 
@@ -23,6 +24,7 @@ final gCastServiceProvider = Provider(
 );
 
 class GCastService {
+  final _log = Logger('GCastService');
   final GCastRepository _gCastRepository;
   final SessionsAPIRepository _sessionsApiService;
   final AssetApiRepository _assetApiRepository;
@@ -86,6 +88,10 @@ class GCastService {
     // the receiver could not fetch the media URL (unreachable host, untrusted
     // TLS certificate) or the codec/container is unsupported. Surface it so the
     // failure is visible instead of the app appearing to cast into the void.
+    _log.warning(
+      'Cast receiver failed to load ${_loadingAsset?.id} via the ${_loadedViaLocal ? 'LAN' : 'server'} endpoint: $message',
+    );
+
     _mediaStatusPollingTimer?.cancel();
     currentAssetId = null;
 
