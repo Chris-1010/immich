@@ -38,7 +38,7 @@ import {
   VideoStreamInfo,
 } from 'src/types';
 import { getAssetFiles } from 'src/utils/asset.util';
-import { BaseConfig, ThumbnailConfig } from 'src/utils/media';
+import { BaseConfig, getCastCommand, isCastCopyRequired, ThumbnailConfig } from 'src/utils/media';
 import { mimeTypes } from 'src/utils/mime-types';
 import { clamp, isFaceImportEnabled, isFacialRecognitionEnabled } from 'src/utils/misc';
 interface UpsertFileOptions {
@@ -501,6 +501,11 @@ export class MediaService extends BaseService {
       return JobStatus.Failed;
     }
 
+    if (asset.visibility !== AssetVisibility.Hidden) {
+      // Created, refreshed or removed independently of the main encode, so a re-encode also regenerates it
+      await this.jobRepository.queue({ name: JobName.AssetEncodeCastVideo, data: { id: asset.id } });
+    }
+
     let { ffmpeg } = await this.getConfig({ withCache: true });
     const target = this.getTranscodeTarget(ffmpeg, videoStream, audioStream);
     if (target === TranscodeTarget.None && !this.isRemuxRequired(ffmpeg, format)) {
@@ -556,6 +561,61 @@ export class MediaService extends BaseService {
     this.logger.log(`Successfully encoded ${asset.id}`);
 
     await this.assetRepository.update({ id: asset.id, encodedVideoPath: output });
+
+    return JobStatus.Success;
+  }
+
+  @OnJob({ name: JobName.AssetEncodeCastVideo, queue: QueueName.VideoConversion })
+  async handleCastVideoConversion({ id }: JobOf<JobName.AssetEncodeCastVideo>): Promise<JobStatus> {
+    const asset = await this.assetJobRepository.getForVideoConversion(id);
+    if (!asset) {
+      return JobStatus.Failed;
+    }
+
+    const { ffmpeg } = await this.getConfig({ withCache: true });
+    if (ffmpeg.transcode === TranscodePolicy.Disabled) {
+      this.logger.verbose(`Transcoding is disabled, skipping cast copy for asset ${asset.id}`);
+      return JobStatus.Skipped;
+    }
+
+    const input = asset.originalPath;
+    const { videoStreams, audioStreams } = await this.mediaRepository.probe(input);
+    const videoStream = this.getMainStream(videoStreams);
+    const audioStream = this.getMainStream(audioStreams);
+    if (!videoStream || !videoStream.height || !videoStream.width) {
+      this.logger.warn(`Skipped cast copy for asset ${asset.id}: no video streams found`);
+      return JobStatus.Failed;
+    }
+
+    if (!isCastCopyRequired(videoStream)) {
+      if (asset.castVideoPath) {
+        this.logger.log(`Cast copy exists for asset ${asset.id}, but is no longer required. Deleting...`);
+        await this.assetRepository.deleteFile({ assetId: asset.id, type: AssetFileType.CastVideo });
+        await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [asset.castVideoPath] } });
+      } else {
+        this.logger.verbose(`Asset ${asset.id} is already cast-compatible, skipping cast copy`);
+      }
+
+      return JobStatus.Skipped;
+    }
+
+    const output = StorageCore.getCastVideoPath(asset);
+    this.storageCore.ensureFolders(output);
+
+    this.logger.log(`Creating cast copy of video ${asset.id}`);
+    try {
+      await this.mediaRepository.transcode(input, output, getCastCommand(ffmpeg, videoStream, audioStream));
+    } catch (error: any) {
+      this.logger.error(`Error occurred while creating cast copy for asset ${asset.id}: ${error.message}`);
+      return JobStatus.Failed;
+    }
+
+    await this.assetRepository.upsertFile({ assetId: asset.id, type: AssetFileType.CastVideo, path: output });
+    if (asset.castVideoPath && asset.castVideoPath !== output) {
+      await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [asset.castVideoPath] } });
+    }
+
+    this.logger.log(`Successfully created cast copy of ${asset.id}`);
 
     return JobStatus.Success;
   }

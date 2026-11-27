@@ -455,17 +455,48 @@ where
   and "asset"."visibility" != $3
   and "asset"."deletedAt" is null
 
+-- AssetJobRepository.streamForCastVideoConversion
+select
+  "asset"."id"
+from
+  "asset"
+where
+  "asset"."type" = $1
+  and "asset"."encodedVideoPath" is not null
+  and "asset"."encodedVideoPath" != $2
+  and "asset"."visibility" != $3
+  and "asset"."deletedAt" is null
+  and not exists (
+    select
+      "asset_file"."id"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = $4
+  )
+
 -- AssetJobRepository.getForVideoConversion
 select
   "asset"."id",
   "asset"."ownerId",
   "asset"."originalPath",
-  "asset"."encodedVideoPath"
+  "asset"."encodedVideoPath",
+  "asset"."visibility",
+  (
+    select
+      "asset_file"."path"
+    from
+      "asset_file"
+    where
+      "asset_file"."assetId" = "asset"."id"
+      and "asset_file"."type" = $1
+  ) as "castVideoPath"
 from
   "asset"
 where
-  "asset"."id" = $1
-  and "asset"."type" = $2
+  "asset"."id" = $2
+  and "asset"."type" = $3
 
 -- AssetJobRepository.streamForMetadataExtraction
 select

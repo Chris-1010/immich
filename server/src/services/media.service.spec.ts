@@ -5,6 +5,7 @@ import {
   AssetFileType,
   AssetPathType,
   AssetType,
+  AssetVisibility,
   AudioCodec,
   Colorspace,
   ExifOrientation,
@@ -1316,10 +1317,110 @@ describe(MediaService.name, () => {
     });
   });
 
+  describe('handleCastVideoConversion', () => {
+    const castPath = '/data/encoded-video/user-id/as/se/asset-id-cast.mp4';
+
+    beforeEach(() => {
+      mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...assetStub.video, castVideoPath: null });
+    });
+
+    it('should fail if the asset is not found', async () => {
+      mocks.assetJob.getForVideoConversion.mockResolvedValue(void 0);
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Failed);
+      expect(mocks.media.probe).not.toHaveBeenCalled();
+    });
+
+    it('should skip when transcoding is disabled', async () => {
+      mocks.systemMetadata.get.mockResolvedValue({ ffmpeg: { transcode: TranscodePolicy.Disabled } });
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.media.probe).not.toHaveBeenCalled();
+      expect(mocks.media.transcode).not.toHaveBeenCalled();
+    });
+
+    it('should fail without a video stream', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.noVideoStreams);
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Failed);
+      expect(mocks.media.transcode).not.toHaveBeenCalled();
+    });
+
+    it('should skip videos that are already cast-compatible', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamH264);
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.media.transcode).not.toHaveBeenCalled();
+      expect(mocks.asset.upsertFile).not.toHaveBeenCalled();
+      expect(mocks.asset.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should delete a cast copy that is no longer required', async () => {
+      mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...assetStub.video, castVideoPath: castPath });
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamH264);
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Skipped);
+      expect(mocks.asset.deleteFile).toHaveBeenCalledWith({ assetId: 'asset-id', type: AssetFileType.CastVideo });
+      expect(mocks.job.queue).toHaveBeenCalledWith({ name: JobName.FileDelete, data: { files: [castPath] } });
+    });
+
+    it('should create a cast copy for a portrait video', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamVertical2160p);
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Success);
+      expect(mocks.storage.mkdirSync).toHaveBeenCalled();
+      expect(mocks.media.transcode).toHaveBeenCalledWith(
+        '/original/path.ext',
+        expect.stringMatching(/asset-id-cast\.mp4$/),
+        expect.objectContaining({
+          inputOptions: [],
+          outputOptions: expect.arrayContaining(['-c:v libx264', '-vf scale=606:1080,format=yuv420p']),
+          twoPass: false,
+        }),
+      );
+      expect(mocks.asset.upsertFile).toHaveBeenCalledWith({
+        assetId: 'asset-id',
+        type: AssetFileType.CastVideo,
+        path: expect.stringMatching(/asset-id-cast\.mp4$/),
+      });
+    });
+
+    it('should not use hardware acceleration even when configured', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamVertical2160p);
+      mocks.systemMetadata.get.mockResolvedValue({
+        ffmpeg: { accel: TranscodeHardwareAcceleration.Nvenc, accelDecode: true },
+      });
+      await sut.handleCastVideoConversion({ id: 'asset-id' });
+      const command = mocks.media.transcode.mock.calls[0][2];
+      expect([...command.inputOptions, ...command.outputOptions].join(' ')).not.toMatch(/noautorotate|hwaccel|nvenc/);
+    });
+
+    it('should fail and not record a file when ffmpeg fails', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamVertical2160p);
+      mocks.media.transcode.mockRejectedValue(new Error('ffmpeg error'));
+      await expect(sut.handleCastVideoConversion({ id: 'asset-id' })).resolves.toBe(JobStatus.Failed);
+      expect(mocks.asset.upsertFile).not.toHaveBeenCalled();
+    });
+  });
+
   describe('handleVideoConversion', () => {
     beforeEach(() => {
-      mocks.assetJob.getForVideoConversion.mockResolvedValue(assetStub.video);
+      mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...assetStub.video, castVideoPath: null });
       sut.videoInterfaces = { dri: ['renderD128'], mali: true };
+    });
+
+    it('should queue a cast copy job after probing', async () => {
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamH264);
+      await sut.handleVideoConversion({ id: assetStub.video.id });
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.AssetEncodeCastVideo,
+        data: { id: assetStub.video.id },
+      });
+    });
+
+    it('should not queue a cast copy job for hidden videos', async () => {
+      mocks.assetJob.getForVideoConversion.mockResolvedValue({
+        ...assetStub.video,
+        visibility: AssetVisibility.Hidden,
+        castVideoPath: null,
+      });
+      mocks.media.probe.mockResolvedValue(probeStub.videoStreamH264);
+      await sut.handleVideoConversion({ id: assetStub.video.id });
+      expect(mocks.job.queue).not.toHaveBeenCalledWith(expect.objectContaining({ name: JobName.AssetEncodeCastVideo }));
     });
 
     it('should skip transcoding if asset not found', async () => {
@@ -1662,7 +1763,7 @@ describe(MediaService.name, () => {
       const asset = assetStub.hasEncodedVideo;
       mocks.media.probe.mockResolvedValue(probeStub.videoStream2160p);
       mocks.systemMetadata.get.mockResolvedValue({ ffmpeg: { transcode: TranscodePolicy.Disabled } });
-      mocks.assetJob.getForVideoConversion.mockResolvedValue(asset);
+      mocks.assetJob.getForVideoConversion.mockResolvedValue({ ...asset, castVideoPath: null });
 
       await sut.handleVideoConversion({ id: asset.id });
 

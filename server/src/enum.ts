@@ -602,6 +602,7 @@ export enum JobName {
   AssetDetectDuplicates = 'AssetDetectDuplicates',
   AssetEncodeVideoQueueAll = 'AssetEncodeVideoQueueAll',
   AssetEncodeVideo = 'AssetEncodeVideo',
+  AssetEncodeCastVideo = 'AssetEncodeCastVideo',
   AssetEmptyTrash = 'AssetEmptyTrash',
   AssetExtractMetadataQueueAll = 'AssetExtractMetadataQueueAll',
   AssetExtractMetadata = 'AssetExtractMetadata',
