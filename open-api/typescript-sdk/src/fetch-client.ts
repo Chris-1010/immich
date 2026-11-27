@@ -2991,7 +2991,8 @@ export function viewAsset({ id, key, size, slug }: {
 /**
  * Play asset video
  */
-export function playAssetVideo({ id, key, slug }: {
+export function playAssetVideo({ cast, id, key, slug }: {
+    cast?: boolean;
     id: string;
     key?: string;
     slug?: string;
@@ -3000,6 +3001,7 @@ export function playAssetVideo({ id, key, slug }: {
         status: 200;
         data: Blob;
     }>(`/assets/${encodeURIComponent(id)}/video/playback${QS.query(QS.explode({
+        cast,
         key,
         slug
     }))}`, {
@@ -6213,6 +6215,7 @@ export enum JobName {
     AssetDetectDuplicates = "AssetDetectDuplicates",
     AssetEncodeVideoQueueAll = "AssetEncodeVideoQueueAll",
     AssetEncodeVideo = "AssetEncodeVideo",
+    AssetEncodeCastVideo = "AssetEncodeCastVideo",
     AssetEmptyTrash = "AssetEmptyTrash",
     AssetExtractMetadataQueueAll = "AssetExtractMetadataQueueAll",
     AssetExtractMetadata = "AssetExtractMetadata",

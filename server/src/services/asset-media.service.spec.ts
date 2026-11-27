@@ -696,6 +696,59 @@ describe(AssetMediaService.name, () => {
     });
   });
 
+  describe('playbackVideo with cast', () => {
+    const castVideoFile = {
+      id: 'cast-file-id',
+      type: AssetFileType.CastVideo,
+      path: '/encoded/video/asset-id-cast.mp4',
+    };
+
+    it('should serve the cast copy when requested and available', async () => {
+      const asset = { ...assetStub.hasEncodedVideo, files: [castVideoFile] };
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.asset.getById.mockResolvedValue(asset);
+
+      await expect(sut.playbackVideo(authStub.admin, asset.id, { cast: true })).resolves.toEqual(
+        new ImmichFileResponse({
+          path: castVideoFile.path,
+          cacheControl: CacheControl.PrivateWithCache,
+          contentType: 'video/mp4',
+        }),
+      );
+    });
+
+    it('should ignore the cast copy without the flag', async () => {
+      const asset = { ...assetStub.hasEncodedVideo, files: [castVideoFile] };
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.asset.getById.mockResolvedValue(asset);
+
+      await expect(sut.playbackVideo(authStub.admin, asset.id, { cast: false })).resolves.toEqual(
+        expect.objectContaining({ path: asset.encodedVideoPath }),
+      );
+      await expect(sut.playbackVideo(authStub.admin, asset.id)).resolves.toEqual(
+        expect.objectContaining({ path: asset.encodedVideoPath }),
+      );
+    });
+
+    it('should fall back to the encoded video when there is no cast copy', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([assetStub.hasEncodedVideo.id]));
+      mocks.asset.getById.mockResolvedValue(assetStub.hasEncodedVideo);
+
+      await expect(sut.playbackVideo(authStub.admin, assetStub.hasEncodedVideo.id, { cast: true })).resolves.toEqual(
+        expect.objectContaining({ path: assetStub.hasEncodedVideo.encodedVideoPath }),
+      );
+    });
+
+    it('should fall back to the original when there is no cast copy or encoded video', async () => {
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([assetStub.video.id]));
+      mocks.asset.getById.mockResolvedValue(assetStub.video);
+
+      await expect(sut.playbackVideo(authStub.admin, assetStub.video.id, { cast: true })).resolves.toEqual(
+        expect.objectContaining({ path: assetStub.video.originalPath }),
+      );
+    });
+  });
+
   describe('checkExistingAssets', () => {
     it('should get existing asset ids', async () => {
       mocks.asset.getByDeviceIds.mockResolvedValue(['42']);

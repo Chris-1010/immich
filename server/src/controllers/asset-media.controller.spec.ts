@@ -147,6 +147,34 @@ describe(AssetMediaController.name, () => {
       );
     });
 
+    describe('GET /assets/:id/video/playback', () => {
+      it('should be an authenticated route', async () => {
+        await request(ctx.getHttpServer()).get(`/assets/${factory.uuid()}/video/playback`);
+        expect(ctx.authenticate).toHaveBeenCalled();
+      });
+
+      it('should reject a non-boolean `cast`', async () => {
+        const { status, body } = await request(ctx.getHttpServer()).get(
+          `/assets/${factory.uuid()}/video/playback?cast=maybe`,
+        );
+        expect(status).toBe(400);
+        expect(body).toEqual(factory.responses.badRequest(['cast must be a boolean value']));
+        expect(service.playbackVideo).not.toHaveBeenCalled();
+      });
+
+      it('should pass `cast=true` to the service', async () => {
+        const id = factory.uuid();
+        await request(ctx.getHttpServer()).get(`/assets/${id}/video/playback?cast=true`);
+        expect(service.playbackVideo).toHaveBeenCalledWith(undefined, id, { cast: true });
+      });
+
+      it('should leave `cast` unset by default', async () => {
+        const id = factory.uuid();
+        await request(ctx.getHttpServer()).get(`/assets/${id}/video/playback`);
+        expect(service.playbackVideo).toHaveBeenCalledWith(undefined, id, {});
+      });
+    });
+
     // TODO figure out how to deal with `sendFile`
     describe.skip('GET /assets/:id/original', () => {
       it('should be an authenticated route', async () => {

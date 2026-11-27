@@ -28,6 +28,7 @@ import {
   AssetBulkUploadCheckDto,
   AssetMediaCreateDto,
   AssetMediaOptionsDto,
+  AssetMediaPlaybackDto,
   AssetMediaReplaceDto,
   AssetMediaSize,
   CheckExistingAssetsDto,
@@ -178,10 +179,11 @@ export class AssetMediaController {
   async playAssetVideo(
     @Auth() auth: AuthDto,
     @Param() { id }: UUIDParamDto,
+    @Query() dto: AssetMediaPlaybackDto,
     @Res() res: Response,
     @Next() next: NextFunction,
   ) {
-    await sendFile(res, next, () => this.service.playbackVideo(auth, id), this.logger);
+    await sendFile(res, next, () => this.service.playbackVideo(auth, id, dto), this.logger);
   }
 
   @Post('exist')
