@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:cast/session.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/models/cast/cast_manager_state.dart';
 import 'package:immich_mobile/models/sessions/session_create_response.model.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
 import 'package:immich_mobile/repositories/gcast.repository.dart';
 import 'package:immich_mobile/repositories/sessions_api.repository.dart';
 import 'package:immich_mobile/utils/image_url_builder.dart';
+import 'package:logging/logging.dart';
 // ignore: import_rule_openapi, we are only using the AssetMediaSize enum
 import 'package:openapi/api.dart';
 
@@ -21,6 +24,7 @@ final gCastServiceProvider = Provider(
 );
 
 class GCastService {
+  final _log = Logger('GCastService');
   final GCastRepository _gCastRepository;
   final SessionsAPIRepository _sessionsApiService;
   final AssetApiRepository _assetApiRepository;
@@ -31,6 +35,12 @@ class GCastService {
   int? _sessionId;
   Timer? _mediaStatusPollingTimer;
 
+  // The asset of the last LOAD sent, and whether that LOAD pointed the receiver
+  // at the LAN endpoint. Used to fall back to the server endpoint when the
+  // receiver cannot reach the LAN address.
+  RemoteAsset? _loadingAsset;
+  bool _loadedViaLocal = false;
+
   void Function(bool)? onConnectionState;
 
   void Function(Duration)? onCurrentTime;
@@ -40,6 +50,8 @@ class GCastService {
   void Function(String)? onReceiverName;
 
   void Function(CastState)? onCastState;
+
+  void Function(String)? onReceiverError;
 
   GCastService(this._gCastRepository, this._sessionsApiService, this._assetApiRepository) {
     _gCastRepository.onCastStatus = _onCastStatusCallback;
@@ -63,7 +75,36 @@ class GCastService {
       case "MEDIA_STATUS":
         _handleMediaStatus(message);
         break;
+      case "LOAD_FAILED":
+      case "ERROR":
+      case "INVALID_REQUEST":
+        _handleLoadError(message);
+        break;
     }
+  }
+
+  void _handleLoadError(Map<String, dynamic> message) {
+    // The receiver rejected the media it was told to load. This usually means
+    // the receiver could not fetch the media URL (unreachable host, untrusted
+    // TLS certificate) or the codec/container is unsupported. Surface it so the
+    // failure is visible instead of the app appearing to cast into the void.
+    _log.warning(
+      'Cast receiver failed to load ${_loadingAsset?.id} via the ${_loadedViaLocal ? 'LAN' : 'server'} endpoint: $message',
+    );
+
+    _mediaStatusPollingTimer?.cancel();
+    currentAssetId = null;
+
+    final asset = _loadingAsset;
+    if (_loadedViaLocal && asset != null) {
+      // The receiver could not load from the LAN endpoint (e.g. a TV on another
+      // network). Retry once with the endpoint the app itself is using.
+      unawaited(_loadMedia(asset, true, preferLocal: false));
+      return;
+    }
+
+    final reason = message['reason'] ?? message['detailedErrorCode'] ?? message['type'];
+    onReceiverError?.call(reason.toString());
   }
 
   void _handleMediaStatus(Map<String, dynamic> message) {
@@ -126,8 +167,14 @@ class GCastService {
   }
 
   Future<void> disconnect() async {
+    // Update the UI straight away rather than waiting for the receiver to close
+    // the socket, which can take a while.
+    _mediaStatusPollingTimer?.cancel();
+    isConnected = false;
+    onConnectionState?.call(false);
     onReceiverName?.call("");
     currentAssetId = null;
+    _loadingAsset = null;
     await _gCastRepository.disconnect();
   }
 
@@ -147,7 +194,22 @@ class GCastService {
     return bufferedExpiration.isAfter(DateTime.now());
   }
 
-  void loadMedia(RemoteAsset asset, bool reload) async {
+  /// The LAN endpoint from Settings > Networking, normalised to the `/api`
+  /// form of the server endpoint, or null when none is set.
+  String? _localApiEndpoint() {
+    var local = Store.tryGet(StoreKey.localEndpoint)?.trim();
+    if (local == null || local.isEmpty) {
+      return null;
+    }
+    while (local!.endsWith('/')) {
+      local = local.substring(0, local.length - 1);
+    }
+    return local.endsWith('/api') ? local : '$local/api';
+  }
+
+  void loadMedia(RemoteAsset asset, bool reload) => _loadMedia(asset, reload);
+
+  Future<void> _loadMedia(RemoteAsset asset, bool reload, {bool preferLocal = true}) async {
     if (!isConnected) {
       return;
     } else if (asset.id == currentAssetId && !reload) {
@@ -164,10 +226,20 @@ class GCastService {
     }
 
     final unauthenticatedUrl = asset.isVideo
-        ? getPlaybackUrlForRemoteId(asset.id)
+        // Ask for the server's cast-only copy (fits 1920x1080, rotation applied); servers without one fall back to
+        // the normal playback file.
+        ? '${getPlaybackUrlForRemoteId(asset.id)}cast=true'
         : getThumbnailUrlForRemoteId(asset.id, type: AssetMediaSize.fullsize);
 
-    final authenticatedURL = "$unauthenticatedUrl&sessionKey=${sessionKey?.token}";
+    // Cast receivers (TVs) are usually on the home LAN and often cannot reach
+    // the endpoint the phone uses (e.g. a Tailscale address), so point them at
+    // the LAN endpoint when one is configured.
+    final serverEndpoint = Store.get(StoreKey.serverEndpoint);
+    final localEndpoint = preferLocal ? _localApiEndpoint() : null;
+    final useLocal = localEndpoint != null && localEndpoint != serverEndpoint;
+    final castUrl = useLocal ? unauthenticatedUrl.replaceFirst(serverEndpoint, localEndpoint) : unauthenticatedUrl;
+
+    final authenticatedURL = "$castUrl&sessionKey=${sessionKey?.token}";
 
     // get image mime type
     final mimeType = await _assetApiRepository.getAssetMIMEType(asset.id);
@@ -188,6 +260,8 @@ class GCastService {
     });
 
     currentAssetId = asset.id;
+    _loadingAsset = asset;
+    _loadedViaLocal = useLocal;
 
     // we need to poll for media status since the cast device does not
     // send a message when the media is loaded for whatever reason
