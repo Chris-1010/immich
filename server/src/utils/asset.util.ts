@@ -26,6 +26,7 @@ export const getAssetFiles = (files: AssetFile[]) => ({
   previewFile: getAssetFile(files, AssetFileType.Preview),
   thumbnailFile: getAssetFile(files, AssetFileType.Thumbnail),
   sidecarFile: getAssetFile(files, AssetFileType.Sidecar),
+  castVideoFile: getAssetFile(files, AssetFileType.CastVideo),
 });
 
 export const addAssets = async (

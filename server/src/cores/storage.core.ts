@@ -113,6 +113,10 @@ export class StorageCore {
     return StorageCore.getNestedPath(StorageFolder.EncodedVideo, asset.ownerId, `${asset.id}.mp4`);
   }
 
+  static getCastVideoPath(asset: ThumbnailPathEntity) {
+    return StorageCore.getNestedPath(StorageFolder.EncodedVideo, asset.ownerId, `${asset.id}-cast.mp4`);
+  }
+
   static getAndroidMotionPath(asset: ThumbnailPathEntity, uuid: string) {
     return StorageCore.getNestedPath(StorageFolder.EncodedVideo, asset.ownerId, `${uuid}-MP.mp4`);
   }
@@ -148,6 +152,20 @@ export class StorageCore {
       pathType: AssetPathType.EncodedVideo,
       oldPath: asset.encodedVideoPath,
       newPath: StorageCore.getEncodedVideoPath(asset),
+    });
+  }
+
+  async moveAssetCastVideo(asset: StorageAsset) {
+    const oldFile = getAssetFile(asset.files, AssetFileType.CastVideo);
+    if (!oldFile) {
+      return;
+    }
+
+    return this.moveFile({
+      entityId: asset.id,
+      pathType: AssetPathType.CastVideo,
+      oldPath: oldFile.path,
+      newPath: StorageCore.getCastVideoPath(asset),
     });
   }
 
@@ -306,6 +324,9 @@ export class StorageCore {
       }
       case AssetPathType.Sidecar: {
         return this.assetRepository.upsertFile({ assetId: id, type: AssetFileType.Sidecar, path: newPath });
+      }
+      case AssetPathType.CastVideo: {
+        return this.assetRepository.upsertFile({ assetId: id, type: AssetFileType.CastVideo, path: newPath });
       }
       case PersonPathType.Face: {
         return this.personRepository.update({ id, thumbnailPath: newPath });

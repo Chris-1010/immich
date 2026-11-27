@@ -981,3 +981,26 @@ export class RkmppHwDecodeConfig extends RkmppSwDecodeConfig {
     return [];
   }
 }
+
+/**
+ * Largest coded frame a strict cast receiver (e.g. LG webOS Google Cast) accepts.
+ * Portrait frames taller than 1080 px are rejected, so both limits apply regardless of orientation.
+ */
+export const CAST_MAX_WIDTH = 1920;
+export const CAST_MAX_HEIGHT = 1080;
+
+const normalizeRotation = (rotation: number) => (((rotation || 0) % 360) + 360) % 360;
+
+/**
+ * A video needs a cast-only copy unless its main video stream is already H.264, yuv420p,
+ * unrotated and within 1920x1080. Such receivers ignore rotation metadata, so any rotation needs a copy.
+ */
+export const isCastCopyRequired = (videoStream: VideoStreamInfo): boolean => {
+  const compliant =
+    videoStream.codecName === VideoCodec.H264 &&
+    videoStream.pixelFormat === 'yuv420p' &&
+    normalizeRotation(videoStream.rotation) === 0 &&
+    videoStream.width <= CAST_MAX_WIDTH &&
+    videoStream.height <= CAST_MAX_HEIGHT;
+  return !compliant;
+};
