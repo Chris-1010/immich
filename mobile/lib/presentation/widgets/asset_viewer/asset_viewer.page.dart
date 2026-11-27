@@ -23,6 +23,7 @@ import 'package:immich_mobile/presentation/widgets/asset_viewer/viewer_bottom_ap
 import 'package:immich_mobile/providers/cast.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/current_album.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
+import 'package:immich_mobile/widgets/asset_viewer/cast_load_error.dart';
 import 'package:immich_mobile/widgets/photo_view/photo_view.dart';
 
 @RoutePage()
@@ -256,6 +257,15 @@ class _AssetViewerState extends ConsumerState<AssetViewer> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _handleCasting();
       });
+    });
+
+    // Surface cast receiver load failures here, where media is sent to the
+    // receiver, so they show even after the cast dialog has been closed.
+    ref.listen(castErrorProvider, (_, next) {
+      final error = next.valueOrNull;
+      if (error != null) {
+        showCastLoadError(context, error);
+      }
     });
 
     ref.listen(assetViewerProvider.select((value) => (value.showingControls, value.showingDetails)), (_, state) {
