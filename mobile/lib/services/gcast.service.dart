@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:cast/session.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/store.model.dart';
+import 'package:immich_mobile/entities/store.entity.dart';
 import 'package:immich_mobile/models/cast/cast_manager_state.dart';
 import 'package:immich_mobile/models/sessions/session_create_response.model.dart';
 import 'package:immich_mobile/repositories/asset_api.repository.dart';
@@ -30,6 +32,12 @@ class GCastService {
   bool isConnected = false;
   int? _sessionId;
   Timer? _mediaStatusPollingTimer;
+
+  // The asset of the last LOAD sent, and whether that LOAD pointed the receiver
+  // at the LAN endpoint. Used to fall back to the server endpoint when the
+  // receiver cannot reach the LAN address.
+  RemoteAsset? _loadingAsset;
+  bool _loadedViaLocal = false;
 
   void Function(bool)? onConnectionState;
 
@@ -66,7 +74,6 @@ class GCastService {
         _handleMediaStatus(message);
         break;
       case "LOAD_FAILED":
-      case "LOAD_CANCELLED":
       case "ERROR":
       case "INVALID_REQUEST":
         _handleLoadError(message);
@@ -81,6 +88,14 @@ class GCastService {
     // failure is visible instead of the app appearing to cast into the void.
     _mediaStatusPollingTimer?.cancel();
     currentAssetId = null;
+
+    final asset = _loadingAsset;
+    if (_loadedViaLocal && asset != null) {
+      // The receiver could not load from the LAN endpoint (e.g. a TV on another
+      // network). Retry once with the endpoint the app itself is using.
+      unawaited(_loadMedia(asset, true, preferLocal: false));
+      return;
+    }
 
     final reason = message['reason'] ?? message['detailedErrorCode'] ?? message['type'];
     onReceiverError?.call(reason.toString());
@@ -167,7 +182,22 @@ class GCastService {
     return bufferedExpiration.isAfter(DateTime.now());
   }
 
-  void loadMedia(RemoteAsset asset, bool reload) async {
+  /// The LAN endpoint from Settings > Networking, normalised to the `/api`
+  /// form of the server endpoint, or null when none is set.
+  String? _localApiEndpoint() {
+    var local = Store.tryGet(StoreKey.localEndpoint)?.trim();
+    if (local == null || local.isEmpty) {
+      return null;
+    }
+    while (local!.endsWith('/')) {
+      local = local.substring(0, local.length - 1);
+    }
+    return local.endsWith('/api') ? local : '$local/api';
+  }
+
+  void loadMedia(RemoteAsset asset, bool reload) => _loadMedia(asset, reload);
+
+  Future<void> _loadMedia(RemoteAsset asset, bool reload, {bool preferLocal = true}) async {
     if (!isConnected) {
       return;
     } else if (asset.id == currentAssetId && !reload) {
@@ -187,7 +217,15 @@ class GCastService {
         ? getPlaybackUrlForRemoteId(asset.id)
         : getThumbnailUrlForRemoteId(asset.id, type: AssetMediaSize.fullsize);
 
-    final authenticatedURL = "$unauthenticatedUrl&sessionKey=${sessionKey?.token}";
+    // Cast receivers (TVs) are usually on the home LAN and often cannot reach
+    // the endpoint the phone uses (e.g. a Tailscale address), so point them at
+    // the LAN endpoint when one is configured.
+    final serverEndpoint = Store.get(StoreKey.serverEndpoint);
+    final localEndpoint = preferLocal ? _localApiEndpoint() : null;
+    final useLocal = localEndpoint != null && localEndpoint != serverEndpoint;
+    final castUrl = useLocal ? unauthenticatedUrl.replaceFirst(serverEndpoint, localEndpoint) : unauthenticatedUrl;
+
+    final authenticatedURL = "$castUrl&sessionKey=${sessionKey?.token}";
 
     // get image mime type
     final mimeType = await _assetApiRepository.getAssetMIMEType(asset.id);
@@ -208,6 +246,8 @@ class GCastService {
     });
 
     currentAssetId = asset.id;
+    _loadingAsset = asset;
+    _loadedViaLocal = useLocal;
 
     // we need to poll for media status since the cast device does not
     // send a message when the media is loaded for whatever reason
