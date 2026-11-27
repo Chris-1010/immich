@@ -150,6 +150,7 @@ export class MediaService extends BaseService {
     await this.storageCore.moveAssetImage(asset, AssetPathType.Preview, image.preview.format);
     await this.storageCore.moveAssetImage(asset, AssetPathType.Thumbnail, image.thumbnail.format);
     await this.storageCore.moveAssetVideo(asset);
+    await this.storageCore.moveAssetCastVideo(asset);
 
     return JobStatus.Success;
   }
@@ -461,13 +462,25 @@ export class MediaService extends BaseService {
   async handleQueueVideoConversion(job: JobOf<JobName.AssetEncodeVideoQueueAll>): Promise<JobStatus> {
     const { force } = job;
 
-    let queue: { name: JobName.AssetEncodeVideo; data: { id: string } }[] = [];
+    let queue: { name: JobName.AssetEncodeVideo | JobName.AssetEncodeCastVideo; data: { id: string } }[] = [];
     for await (const asset of this.assetJobRepository.streamForVideoConversion(force)) {
       queue.push({ name: JobName.AssetEncodeVideo, data: { id: asset.id } });
 
       if (queue.length >= JOBS_ASSET_PAGINATION_SIZE) {
         await this.jobRepository.queueAll(queue);
         queue = [];
+      }
+    }
+
+    if (!force) {
+      // Backfill cast copies for already-encoded videos; the videos above get theirs via AssetEncodeVideo
+      for await (const asset of this.assetJobRepository.streamForCastVideoConversion()) {
+        queue.push({ name: JobName.AssetEncodeCastVideo, data: { id: asset.id } });
+
+        if (queue.length >= JOBS_ASSET_PAGINATION_SIZE) {
+          await this.jobRepository.queueAll(queue);
+          queue = [];
+        }
       }
     }
 

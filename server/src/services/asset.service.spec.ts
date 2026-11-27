@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { MapAsset } from 'src/dtos/asset-response.dto';
 import { AssetJobName, AssetStatsResponseDto } from 'src/dtos/asset.dto';
-import { AssetStatus, AssetType, AssetVisibility, JobName, JobStatus } from 'src/enum';
+import { AssetFileType, AssetStatus, AssetType, AssetVisibility, JobName, JobStatus } from 'src/enum';
 import { AssetStats } from 'src/repositories/asset.repository';
 import { AssetService } from 'src/services/asset.service';
 import { assetStub } from 'test/fixtures/asset.stub';
@@ -676,6 +676,22 @@ describe(AssetService.name, () => {
       ]);
 
       expect(mocks.asset.remove).toHaveBeenCalledWith(assetWithFace);
+    });
+
+    it('should delete the encoded video and cast copy of a video', async () => {
+      const castPath = '/data/encoded-video/user-id/as/se/asset-id-cast.mp4';
+      const asset = {
+        ...assetStub.hasEncodedVideo,
+        files: [{ id: 'cast-file-id', type: AssetFileType.CastVideo, path: castPath }],
+      };
+      mocks.assetJob.getForAssetDeletion.mockResolvedValue(asset as any);
+
+      await sut.handleAssetDeletion({ id: asset.id, deleteOnDisk: true });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.FileDelete,
+        data: { files: expect.arrayContaining([asset.encodedVideoPath, castPath, asset.originalPath]) },
+      });
     });
 
     it('should update stack primary asset if deleted asset was primary asset in a stack', async () => {

@@ -220,6 +220,26 @@ describe(MediaService.name, () => {
       });
       expect(mocks.move.create).toHaveBeenCalledTimes(3);
     });
+
+    it('should move the cast copy of a video', async () => {
+      const castFile = { id: 'cast-file-id', type: AssetFileType.CastVideo, path: '/old/asset-id-cast.mp4' };
+      mocks.assetJob.getForMigrationJob.mockResolvedValue({ ...assetStub.hasEncodedVideo, files: [castFile] } as any);
+      mocks.move.create.mockResolvedValue({
+        entityId: assetStub.hasEncodedVideo.id,
+        id: 'move-id',
+        newPath: '/new/path',
+        oldPath: '/old/path',
+        pathType: AssetPathType.CastVideo,
+      });
+
+      await expect(sut.handleAssetMigration({ id: assetStub.hasEncodedVideo.id })).resolves.toBe(JobStatus.Success);
+      expect(mocks.move.create).toHaveBeenCalledWith({
+        entityId: assetStub.hasEncodedVideo.id,
+        pathType: AssetPathType.CastVideo,
+        oldPath: '/old/asset-id-cast.mp4',
+        newPath: expect.stringContaining('/data/encoded-video/user-id/as/se/asset-id-cast.mp4'),
+      });
+    });
   });
 
   describe('handleGenerateThumbnails', () => {
@@ -1304,6 +1324,7 @@ describe(MediaService.name, () => {
 
     it('should queue all video assets without encoded videos', async () => {
       mocks.assetJob.streamForVideoConversion.mockReturnValue(makeStream([assetStub.video]));
+      mocks.assetJob.streamForCastVideoConversion.mockReturnValue(makeStream([]));
 
       await sut.handleQueueVideoConversion({});
 
@@ -1314,6 +1335,26 @@ describe(MediaService.name, () => {
           data: { id: assetStub.video.id },
         },
       ]);
+    });
+
+    it('should backfill cast copies for encoded videos that lack one', async () => {
+      mocks.assetJob.streamForVideoConversion.mockReturnValue(makeStream([assetStub.video]));
+      mocks.assetJob.streamForCastVideoConversion.mockReturnValue(makeStream([{ id: 'encoded-asset-id' }]));
+
+      await sut.handleQueueVideoConversion({});
+
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.AssetEncodeVideo, data: { id: assetStub.video.id } },
+        { name: JobName.AssetEncodeCastVideo, data: { id: 'encoded-asset-id' } },
+      ]);
+    });
+
+    it('should not run the cast backfill when forcing, since every video is re-encoded', async () => {
+      mocks.assetJob.streamForVideoConversion.mockReturnValue(makeStream([assetStub.video]));
+
+      await sut.handleQueueVideoConversion({ force: true });
+
+      expect(mocks.assetJob.streamForCastVideoConversion).not.toHaveBeenCalled();
     });
   });
 
