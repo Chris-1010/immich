@@ -226,7 +226,9 @@ class GCastService {
     }
 
     final unauthenticatedUrl = asset.isVideo
-        ? getPlaybackUrlForRemoteId(asset.id)
+        // Ask for the server's cast-only copy (fits 1920x1080, rotation applied); servers without one fall back to
+        // the normal playback file.
+        ? '${getPlaybackUrlForRemoteId(asset.id)}cast=true'
         : getThumbnailUrlForRemoteId(asset.id, type: AssetMediaSize.fullsize);
 
     // Cast receivers (TVs) are usually on the home LAN and often cannot reach
